@@ -1,10 +1,12 @@
 package com.example.nssapp.feature.admin.presentation.events
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,13 +16,18 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.nssapp.core.domain.model.Event
 import com.example.nssapp.core.domain.model.Wing
+import com.example.nssapp.feature.admin.presentation.events.components.EventFormDialog
 import java.text.SimpleDateFormat // Formatting
 import java.util.Date
 import java.util.Locale
+import java.util.Calendar
+import android.app.TimePickerDialog
+import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EventListScreen(
+    onEventClick: (String) -> Unit,
     viewModel: AdminEventViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -51,16 +58,16 @@ fun EventListScreen(
                 is EventUiState.Success -> {
                     LazyColumn {
                         items(state.events) { event ->
-                            EventItem(event)
+                            EventItem(event, onClick = { onEventClick(event.id) })
                         }
                     }
                     
                     if (showAddEventDialog) {
-                        AddEventDialog(
+                        EventFormDialog(
                             wings = state.wings,
                             onDismiss = { showAddEventDialog = false },
-                            onConfirm = { title, type, mandatory, targetWings ->
-                                viewModel.addEvent(title, type, mandatory, targetWings)
+                            onConfirm = { title, type, date, startTime, endTime, posHours, negHours, mandatory, targetWings, mandatoryWings ->
+                                viewModel.addEvent(title, type, date, startTime, endTime, posHours, negHours, mandatory, targetWings, mandatoryWings)
                                 showAddEventDialog = false
                             }
                         )
@@ -72,10 +79,10 @@ fun EventListScreen(
 }
 
 @Composable
-fun EventItem(event: Event) {
+fun EventItem(event: Event, onClick: () -> Unit) {
     val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
     Card(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onClick() },
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
@@ -86,66 +93,11 @@ fun EventItem(event: Event) {
             }
             Text(text = "Type: ${event.type}", style = MaterialTheme.typography.bodyMedium)
             Text(text = "Date: ${dateFormat.format(Date(event.date))}", style = MaterialTheme.typography.bodySmall)
+            
+            // Show status in list too
+            Text(text = "Status: ${event.status}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
 
-@Composable
-fun AddEventDialog(
-    wings: List<Wing>,
-    onDismiss: () -> Unit,
-    onConfirm: (String, String, Boolean, List<String>) -> Unit
-) {
-    var title by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf("") }
-    var mandatory by remember { mutableStateOf(false) }
-    // Multi-select for wings? Simplification: Just one wing or "All" logic for now? 
-    // Or just a checkbox list.
-    // Let's do a simple implementation: 
-    // Select one primary wing or none (meaning all?).
-    // Schema says list of strings.
-    // Let's allow selecting multiple.
-    
-    val selectedWings = remember { mutableStateListOf<String>() }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Create Event") },
-        text = {
-            Column {
-                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") })
-                OutlinedTextField(value = type, onValueChange = { type = it }, label = { Text("Type (e.g. Camp)") })
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = mandatory, onCheckedChange = { mandatory = it })
-                    Text("Mandatory")
-                }
-                Text("Target Wings:", style = MaterialTheme.typography.titleSmall)
-                wings.forEach { wing ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = selectedWings.contains(wing.id),
-                            onCheckedChange = { checked ->
-                                if (checked) selectedWings.add(wing.id) else selectedWings.remove(wing.id)
-                            }
-                        )
-                        Text(wing.name)
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { 
-                    if (title.isNotBlank()) {
-                         onConfirm(title, type, mandatory, selectedWings.toList())
-                    }
-                }
-            ) {
-                Text("Create")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
-}

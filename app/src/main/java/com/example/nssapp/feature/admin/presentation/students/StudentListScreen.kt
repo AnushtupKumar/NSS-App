@@ -6,6 +6,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.nssapp.core.domain.model.Student
 import com.example.nssapp.core.domain.model.Wing
+import com.example.nssapp.feature.admin.presentation.students.components.StudentFormDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -21,9 +25,10 @@ fun StudentListScreen(
     viewModel: AdminStudentViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val selectedWing by viewModel.selectedWing.collectAsState()
+    val selectedWings by viewModel.selectedWings.collectAsState()
 
     var showAddStudentDialog by remember { mutableStateOf(false) }
+    var editingStudent by remember { mutableStateOf<Student?>(null) }
     var showAddWingDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -59,25 +64,45 @@ fun StudentListScreen(
                     // Filter Row
                     WingFilterRow(
                         wings = state.wings,
-                        selectedWingId = selectedWing,
-                        onWingSelected = viewModel::selectWing
+                        selectedWingIds = selectedWings,
+                        onWingToggle = viewModel::toggleWingFilter,
+                        onClearFilters = viewModel::clearFilters
                     )
                     
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     LazyColumn {
                         items(state.students) { student ->
-                            StudentItem(student)
+                            StudentItem(
+                                student = student,
+                                onDelete = { viewModel.deleteStudent(student.id) },
+                                onEdit = { editingStudent = student }
+                            )
                         }
                     }
                     
-                    if (showAddStudentDialog) {
-                        AddStudentDialog(
+                    if (showAddStudentDialog || editingStudent != null) {
+                        StudentFormDialog(
+                            initialStudent = editingStudent,
                             wings = state.wings,
-                            onDismiss = { showAddStudentDialog = false },
-                            onConfirm = { name, email, roll, wingId ->
-                                viewModel.addStudent(name, email, roll, wingId)
+                            onDismiss = { 
+                                showAddStudentDialog = false 
+                                editingStudent = null
+                            },
+                            onConfirm = { name, email, roll, wingIds, password ->
+                                if (editingStudent != null) {
+                                    viewModel.updateStudent(editingStudent!!.copy(
+                                        name = name, 
+                                        email = email, 
+                                        roll = roll, 
+                                        enrolledWings = wingIds, 
+                                        password = password
+                                    ))
+                                } else {
+                                    viewModel.addStudent(name, email, roll, wingIds, password)
+                                }
                                 showAddStudentDialog = false
+                                editingStudent = null
                             }
                         )
                     }
@@ -100,99 +125,64 @@ fun StudentListScreen(
 @Composable
 fun WingFilterRow(
     wings: List<Wing>,
-    selectedWingId: String?,
-    onWingSelected: (String?) -> Unit
+    selectedWingIds: Set<String>,
+    onWingToggle: (String) -> Unit,
+    onClearFilters: () -> Unit
 ) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(
-            selected = selectedWingId == null,
-            onClick = { onWingSelected(null) },
+            selected = selectedWingIds.isEmpty(),
+            onClick = onClearFilters,
             label = { Text("All") }
         )
         wings.forEach { wing ->
             FilterChip(
-                selected = selectedWingId == wing.id,
-                onClick = { onWingSelected(wing.id) },
-                label = { Text(wing.name) }
+                selected = selectedWingIds.contains(wing.id),
+                onClick = { onWingToggle(wing.id) },
+                label = { Text(wing.name) },
+                leadingIcon = if (selectedWingIds.contains(wing.id)) {
+                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                } else null
             )
         }
     }
 }
 
 @Composable
-fun StudentItem(student: Student) {
+fun StudentItem(
+    student: Student,
+    onDelete: () -> Unit,
+    onEdit: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = student.name, style = MaterialTheme.typography.titleMedium)
-            Text(text = "Roll: ${student.roll}", style = MaterialTheme.typography.bodyMedium)
-            Text(text = student.email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = student.name, style = MaterialTheme.typography.titleMedium)
+                Text(text = "Roll: ${student.roll}", style = MaterialTheme.typography.bodyMedium)
+                Text(text = student.email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (student.password.isNotEmpty()) {
+                    Text(text = "Pass: ${student.password}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+            Row {
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                }
+            }
         }
     }
 }
 
-@Composable
-fun AddStudentDialog(
-    wings: List<Wing>,
-    onDismiss: () -> Unit,
-    onConfirm: (String, String, String, String) -> Unit
-) {
-    var name by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var roll by remember { mutableStateOf("") }
-    var selectedWingId by remember { mutableStateOf(if (wings.isNotEmpty()) wings[0].id else "") }
-    
-    // Simple dropdown or radio logic for dialog. For now, specific Wing ID selection is tricky in simple dialog.
-    // Let's assume user picks from a simplified list or just default first one for MVP/Proto.
-    // Actually, let's make a simple dropdown replacement: A Row of buttons if few, or just text input?
-    // Let's us a simple DropdownMenu logic or just iterate radio buttons.
-    
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add Student") },
-        text = {
-            Column {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
-                OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email") })
-                OutlinedTextField(value = roll, onValueChange = { roll = it }, label = { Text("Roll No") })
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Select Wing:")
-                val expanded = remember { mutableStateOf(false) }
-                Box {
-                    Button(onClick = { expanded.value = true }) {
-                        Text(wings.find { it.id == selectedWingId }?.name ?: "Select Wing")
-                    }
-                    DropdownMenu(expanded = expanded.value, onDismissRequest = { expanded.value = false }) {
-                        wings.forEach { wing ->
-                            DropdownMenuItem(
-                                text = { Text(wing.name) },
-                                onClick = {
-                                    selectedWingId = wing.id
-                                    expanded.value = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { 
-                    if (name.isNotBlank() && email.isNotBlank() && roll.isNotBlank() && selectedWingId.isNotBlank()) {
-                         onConfirm(name, email, roll, selectedWingId) 
-                    }
-                }
-            ) {
-                Text("Add")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
-}
+
 
 @Composable
 fun AddWingDialog(

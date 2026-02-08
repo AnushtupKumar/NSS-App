@@ -4,7 +4,17 @@ interface AttendanceRepository {
     // Returns success if attendance marked, failure if student not found or error
     suspend fun markAttendance(
         eventId: String, 
-        studentRoll: String, // Using Roll No as it's easier to type manually than a UUID
-        status: String = "Present"
+        studentRoll: String,
+        status: String = "Present",
+        bypassRestrictions: Boolean = false
     ): Result<Unit>
+
+    suspend fun markAttendanceBulk(
+        eventId: String,
+        rollNumbers: List<String>,
+        status: String = "Present",
+        bypassRestrictions: Boolean = false
+    ): Result<List<String>>
+
+    suspend fun applyPenaltyForEvent(eventId: String): Result<Int>
 }

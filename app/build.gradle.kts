@@ -52,6 +52,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -82,4 +83,14 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
+
+    //firebase
+    implementation(platform("com.google.firebase:firebase-bom:34.9.0"))
+    implementation("com.google.firebase:firebase-analytics")
+    
+    // QR Code
+    implementation("com.google.zxing:core:3.5.1")
+    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+    // CameraX concurrent
+    implementation("androidx.concurrent:concurrent-futures-ktx:1.1.0")
 }

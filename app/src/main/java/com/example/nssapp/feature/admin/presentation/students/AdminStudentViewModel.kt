@@ -22,8 +22,8 @@ class AdminStudentViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<StudentUiState>(StudentUiState.Loading)
     val uiState: StateFlow<StudentUiState> = _uiState.asStateFlow()
 
-    private val _selectedWing = MutableStateFlow<String?>(null)
-    val selectedWing: StateFlow<String?> = _selectedWing.asStateFlow()
+    private val _selectedWings = MutableStateFlow<Set<String>>(emptySet())
+    val selectedWings: StateFlow<Set<String>> = _selectedWings.asStateFlow()
 
     init {
         loadData()
@@ -34,12 +34,16 @@ class AdminStudentViewModel @Inject constructor(
             combine(
                 repository.getWings(),
                 repository.getStudents(null), // Initially get all, filtering locally or re-fetching could be better but let's filter locally for small datasets
-                _selectedWing
-            ) { wings, students, selectedWingId ->
-                val filteredStudents = if (selectedWingId == null) {
+                _selectedWings
+            ) { wings, students, selectedWingIds ->
+                val filteredStudents = if (selectedWingIds.isEmpty()) {
                     students
                 } else {
-                    students.filter { it.primaryWing == selectedWingId }
+                    students.filter { student -> 
+                        // Show student if they are in ANY of the selected wings (OR logic) or ALL? Usually OR for filtering lists.
+                        // "filter by selecting multiple wings" -> usually means "show students who belong to Wing A OR Wing B"
+                        student.enrolledWings.any { it in selectedWingIds }
+                    }
                 }
                 StudentUiState.Success(wings, filteredStudents)
             }.catch { e ->
@@ -51,14 +55,36 @@ class AdminStudentViewModel @Inject constructor(
         }
     }
     
-    fun selectWing(wingId: String?) {
-        _selectedWing.value = wingId
+    fun toggleWingFilter(wingId: String) {
+        val current = _selectedWings.value.toMutableSet()
+        if (current.contains(wingId)) {
+            current.remove(wingId)
+        } else {
+            current.add(wingId)
+        }
+        _selectedWings.value = current
     }
 
-    fun addStudent(name: String, email: String, roll: String, wingId: String) {
+    fun clearFilters() {
+        _selectedWings.value = emptySet()
+    }
+
+    fun addStudent(name: String, email: String, roll: String, wingIds: List<String>, password: String) {
         viewModelScope.launch {
-            val student = Student(name = name, email = email, roll = roll, primaryWing = wingId)
+            val student = Student(name = name, email = email, roll = roll, enrolledWings = wingIds, password = password)
             repository.createStudent(student)
+        }
+    }
+
+    fun updateStudent(student: Student) {
+        viewModelScope.launch {
+            repository.updateStudent(student)
+        }
+    }
+
+    fun deleteStudent(studentId: String) {
+        viewModelScope.launch {
+            repository.deleteStudent(studentId)
         }
     }
     

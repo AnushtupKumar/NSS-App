@@ -13,8 +13,14 @@ interface AdminRepository {
     // Students
     fun getStudents(wingId: String? = null): Flow<List<Student>>
     suspend fun createStudent(student: Student): Result<Unit>
+    suspend fun updateStudent(student: Student): Result<Unit>
+    suspend fun deleteStudent(studentId: String): Result<Unit>
     
     // Events
     fun getEvents(): Flow<List<Event>>
     suspend fun createEvent(event: Event): Result<Unit>
+    suspend fun deleteEvent(eventId: String): Result<Unit>
+    suspend fun updateEventStatus(eventId: String, status: String): Result<Unit>
+    fun getEventsByCreator(creatorId: String): Flow<List<Event>>
+    suspend fun updateEvent(event: Event): Result<Unit>
 }

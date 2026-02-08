@@ -63,6 +63,12 @@ fun LoginScreen(
             ) {
                 Text("Login")
             }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Students: Login with credentials provided by Admin",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.secondary
+            )
         }
         
         if (authState is AuthState.Error) {

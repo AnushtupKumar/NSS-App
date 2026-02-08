@@ -30,6 +30,18 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun signup(email: String, pass: String, roll: String) {
+        viewModelScope.launch {
+            _authState.value = AuthState.Loading
+            val result = repository.signup(email, pass, roll)
+            if (result.isSuccess) {
+                 _authState.value = AuthState.SuccessStudent // Signup successful, treat as logged in student
+            } else {
+                 _authState.value = AuthState.Error(result.exceptionOrNull()?.message ?: "Signup Failed")
+            }
+        }
+    }
+
     private fun checkUserRole() {
         viewModelScope.launch {
             // If already loading from login, keep loading. Else set loading?

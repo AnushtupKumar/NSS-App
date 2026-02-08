@@ -41,10 +41,8 @@ class AdminRepositoryImpl @Inject constructor(
     override fun getStudents(wingId: String?): Flow<List<Student>> {
         var query = firestore.collection("students")
         if (wingId != null) {
-            // Need to cast to correct type for whereEqualTo if needed, but collection reference is generic
-             // .whereEqualTo("primaryWing", wingId) // This returns Query
              return firestore.collection("students")
-                .whereEqualTo("primaryWing", wingId)
+                .whereArrayContains("enrolledWings", wingId)
                 .snapshots()
                 .map { it.toObjects(Student::class.java) }
         }
@@ -68,6 +66,24 @@ class AdminRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun updateStudent(student: Student): Result<Unit> {
+        return try {
+            firestore.collection("students").document(student.id).set(student).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun deleteStudent(studentId: String): Result<Unit> {
+        return try {
+            firestore.collection("students").document(studentId).delete().await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     override fun getEvents(): Flow<List<Event>> {
         return firestore.collection("events")
             .snapshots()
@@ -83,6 +99,40 @@ class AdminRepositoryImpl @Inject constructor(
             }
             val newEvent = event.copy(id = docRef.id)
             docRef.set(newEvent).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun deleteEvent(eventId: String): Result<Unit> {
+        return try {
+            firestore.collection("events").document(eventId).delete().await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun updateEventStatus(eventId: String, status: String): Result<Unit> {
+        return try {
+            firestore.collection("events").document(eventId).update("status", status).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override fun getEventsByCreator(creatorId: String): Flow<List<Event>> {
+        return firestore.collection("events")
+            .whereEqualTo("createdBy", creatorId)
+            .snapshots()
+            .map { it.toObjects(Event::class.java) }
+    }
+
+    override suspend fun updateEvent(event: Event): Result<Unit> {
+        return try {
+            firestore.collection("events").document(event.id).set(event).await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

@@ -53,4 +53,44 @@ class StudentRepositoryImpl @Inject constructor(
             Result.failure(e)
         }
     }
+
+    override suspend fun markAttendance(eventId: String, studentId: String): Result<Unit> {
+        return try {
+            val eventRef = firestore.collection("events").document(eventId)
+            if (!eventRef.get().await().exists()) {
+                return Result.failure(Exception("Event not found"))
+            }
+
+            // Check if already present to avoid overwrites
+            val docRef = eventRef.collection("attendance").document(studentId)
+            
+            val snapshot = docRef.get().await()
+            if (snapshot.exists()) {
+                return Result.failure(Exception("Attendance already marked"))
+            }
+
+            val attendanceData = mapOf(
+                "studentId" to studentId,
+                "timestamp" to System.currentTimeMillis(),
+                "status" to "Present"
+            )
+
+            docRef.set(attendanceData).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun checkAttendanceStatus(eventId: String, studentId: String): Result<Boolean> {
+        return try {
+            val snapshot = firestore.collection("events").document(eventId)
+                .collection("attendance").document(studentId)
+                .get()
+                .await()
+            Result.success(snapshot.exists())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

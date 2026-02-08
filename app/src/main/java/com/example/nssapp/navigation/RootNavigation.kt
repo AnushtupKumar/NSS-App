@@ -14,7 +14,8 @@ import com.example.nssapp.feature.auth.presentation.AuthViewModel
 import com.example.nssapp.feature.auth.presentation.LoginScreen
 import com.example.nssapp.feature.student.presentation.StudentHomeScreen
 import com.example.nssapp.feature.student.presentation.profile.StudentProfileScreen
-import androidx.navigation.compose.rememberNavController
+import com.example.nssapp.feature.student.presentation.scan.ScanScreen
+
 
 @Composable
 fun RootNavigation() {
@@ -43,12 +44,23 @@ fun RootNavigation() {
             LoginScreen(viewModel = authViewModel)
         }
         composable("admin_home") {
-            AdminHomeScreen()
+            AdminHomeScreen(
+                onEventClick = { eventId -> navController.navigate("event_detail/$eventId") },
+                onLogout = {
+                    navController.navigate("login") {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
+            )
         }
         composable("student_home") {
             StudentHomeScreen(
-                onProfileClick = { navController.navigate("student_profile") }
+                onProfileClick = { navController.navigate("student_profile") },
+                onScanClick = { navController.navigate("scan_screen") }
             )
+        }
+        composable("scan_screen") {
+            ScanScreen(navController = navController)
         }
         composable("student_profile") {
             StudentProfileScreen(
@@ -58,6 +70,17 @@ fun RootNavigation() {
                          popUpTo(0) { inclusive = true }
                      }
                 }
+            )
+        }
+
+        composable(
+            route = "event_detail/{eventId}",
+            arguments = listOf(androidx.navigation.navArgument("eventId") { type = androidx.navigation.NavType.StringType })
+        ) { backStackEntry ->
+            val eventId = backStackEntry.arguments?.getString("eventId") ?: return@composable
+            com.example.nssapp.feature.admin.presentation.events.EventDetailScreen(
+                eventId = eventId,
+                navController = navController
             )
         }
     }

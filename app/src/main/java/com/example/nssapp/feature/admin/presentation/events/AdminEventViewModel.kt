@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.nssapp.core.domain.model.Event
 import com.example.nssapp.core.domain.model.Wing
 import com.example.nssapp.feature.admin.domain.repository.AdminRepository
+import com.example.nssapp.feature.auth.domain.repository.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,7 +17,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class AdminEventViewModel @Inject constructor(
-    private val repository: AdminRepository
+    private val repository: AdminRepository,
+    private val authRepository: AuthRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<EventUiState>(EventUiState.Loading)
@@ -41,14 +43,31 @@ class AdminEventViewModel @Inject constructor(
         }
     }
 
-    fun addEvent(title: String, type: String, mandatory: Boolean, targetWings: List<String>) {
+    fun addEvent(
+        title: String, 
+        type: String, 
+        date: Long,
+        startTime: Long,
+        endTime: Long,
+        posHours: Double,
+        negHours: Double,
+        mandatory: Boolean, 
+        targetWings: List<String>,
+        mandatoryWings: List<String>
+    ) {
         viewModelScope.launch {
             val event = Event(
                 title = title,
                 type = type,
+                date = date, // This is just the date part, maybe? Or full timestamp?
+                startTime = startTime,
+                endTime = endTime,
+                positiveHours = posHours,
+                negativeHours = negHours,
                 mandatory = mandatory,
                 targetWings = targetWings,
-                date = System.currentTimeMillis() // Defaulting to now for simplicity in MVP
+                mandatoryWings = mandatoryWings,
+                createdBy = authRepository.currentUser?.uid ?: "unknown_admin"
             )
             repository.createEvent(event)
         }

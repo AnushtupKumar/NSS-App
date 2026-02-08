@@ -1,8 +1,6 @@
 package com.example.nssapp.di
 
 import com.example.nssapp.feature.admin.data.repository.AdminRepositoryImpl
-import com.example.nssapp.feature.admin.domain.repository.AdminRepository
-import com.example.nssapp.feature.admin.data.repository.AdminRepositoryImpl
 import com.example.nssapp.feature.admin.data.repository.AttendanceRepositoryImpl
 import com.example.nssapp.feature.admin.domain.repository.AdminRepository
 import com.example.nssapp.feature.admin.domain.repository.AttendanceRepository

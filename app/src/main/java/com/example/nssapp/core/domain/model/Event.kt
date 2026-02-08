@@ -11,5 +11,9 @@ data class Event(
     val mandatory: Boolean = false,
     val studentsExcluded: List<String> = emptyList(),
     val createdBy: String = "", // Admin ID
-    val isPenaltyApplied: Boolean = false
+    val isPenaltyApplied: Boolean = false,
+    val status: String = "UPCOMING", // UPCOMING, ACTIVE, PAUSED, COMPLETED
+    val startTime: Long = 0,
+    val endTime: Long = 0,
+    val mandatoryWings: List<String> = emptyList()
 )

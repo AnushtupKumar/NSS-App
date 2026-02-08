@@ -1,49 +1,51 @@
 package com.example.nssapp.feature.student.presentation
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.EventIsAvailable
-import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.nssapp.core.domain.model.Event
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StudentHomeScreen(
     onProfileClick: () -> Unit,
+    onScanClick: () -> Unit,
     viewModel: StudentHomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
     Scaffold(
         topBar = {
-        topBar = {
-             CenterAlignedTopAppBar(
-                 title = { Text("NSS Attendance") },
-                 actions = {
-                     IconButton(onClick = onProfileClick) {
-                         Icon(Icons.Default.Person, contentDescription = "Profile")
-                     }
-                 }
-             )
+            CenterAlignedTopAppBar(
+                title = { Text("NSS Attendance") },
+                actions = {
+                    IconButton(onClick = onProfileClick) {
+                        Icon(Icons.Default.Person, contentDescription = "Profile")
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = onScanClick) {
+                Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan QR")
+            }
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
@@ -138,7 +140,7 @@ fun StudentEventItem(event: Event, isAttended: Boolean) {
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                 Text(text = event.title, style = MaterialTheme.typography.titleMedium)
                 if (isAttended) {
-                    Icon(Icons.Default.EventIsAvailable, contentDescription = "Attended", tint = Color(0xFF4CAF50))
+                    Icon(Icons.Default.CheckCircle, contentDescription = "Attended", tint = Color(0xFF4CAF50))
                 }
             }
             Text(text = "Type: ${event.type}", style = MaterialTheme.typography.bodyMedium)

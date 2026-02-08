@@ -53,7 +53,8 @@ class ProfileViewModel @Inject constructor(
                 // But AdminRepository provides Flow<List<Wing>>. 
                 
                 val wings = adminRepository.getWings().firstOrNull() ?: emptyList()
-                val wingName = wings.find { it.id == student.primaryWing }?.name ?: "Unknown Wing"
+                val wingNames = wings.filter { student.enrolledWings.contains(it.id) }.joinToString(", ") { it.name }
+                val displayWing = if (wingNames.isNotEmpty()) wingNames else "No Wings Enrolled"
 
                 // Fetch Stats again? Or pass them? Ideally fetch ensuring freshness.
                 val attendedEventsResult = studentRepository.getAttendedEvents(currentUser.uid)
@@ -61,7 +62,7 @@ class ProfileViewModel @Inject constructor(
                 
                 _uiState.value = ProfileUiState.Success(
                     student = student,
-                    wingName = wingName,
+                    wingName = displayWing,
                     attendedCount = attendedCount
                 )
             } else {
