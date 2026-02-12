@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "855183432121",
+    "project_id": "nss-app-7a948",
+    "storage_bucket": "nss-app-7a948.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:855183432121:android:0ce8a49d82778485543e68",
+        "android_client_info": {
+          "package_name": "com.example.nssapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDGR8nUTPt5FX6AR1ApC4ZhMQWj34GqjmI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
