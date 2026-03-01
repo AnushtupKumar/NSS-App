@@ -28,6 +28,7 @@ import com.google.zxing.common.BitMatrix
 import kotlinx.coroutines.launch
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.ui.window.Dialog
@@ -64,11 +65,14 @@ fun EventDetailScreen(
                 },
                 actions = {
                     if (uiState is EventDetailUiState.Success) {
+                        val event = (uiState as EventDetailUiState.Success).event
                         IconButton(onClick = { viewModel.exportAttendance(eventId) }) {
                             Icon(Icons.Default.Share, contentDescription = "Export CSV", tint = MaterialTheme.colorScheme.primary)
                         }
-                        IconButton(onClick = { showDeleteConfirm = true }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                        if (event.status != "ACTIVE") {
+                            IconButton(onClick = { showDeleteConfirm = true }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                            }
                         }
                     }
                 }
@@ -100,27 +104,65 @@ fun EventDetailScreen(
                 )
             }
             if (showAttendees) {
-                 AlertDialog(
-                    onDismissRequest = { showAttendees = false },
-                    title = { Text("Attendees") },
-                    text = { 
-                        if (attendees.isEmpty()) {
-                            Text("No attendees yet.")
-                        } else {
-                            androidx.compose.foundation.lazy.LazyColumn {
-                                items(attendees.size) { index ->
-                                    val student = attendees[index]
-                                    Text("${student.name} (${student.roll})", modifier = Modifier.padding(vertical = 4.dp))
+                Dialog(onDismissRequest = { showAttendees = false }) {
+                    Surface(
+                        shape = MaterialTheme.shapes.extraLarge,
+                        tonalElevation = 6.dp,
+                        modifier = Modifier
+                            .fillMaxWidth(0.95f)
+                            .fillMaxHeight(0.8f)
+                    ) {
+                        Column(modifier = Modifier.padding(24.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        "Event Attendees", 
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                    )
+                                    Text(
+                                        "${attendees.size} students found", 
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                }
+                                IconButton(onClick = { showAttendees = false }) {
+                                    Icon(androidx.compose.material.icons.Icons.Default.Close, contentDescription = "Close")
                                 }
                             }
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { showAttendees = false }) {
-                            Text("Close")
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            if (attendees.isEmpty()) {
+                                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    Text("No records found", style = MaterialTheme.typography.bodyLarge)
+                                }
+                            } else {
+                                androidx.compose.foundation.lazy.LazyColumn(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(attendees.size) { index ->
+                                        AttendeeItem(attendees[index])
+                                    }
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(
+                                onClick = { showAttendees = false },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Text("Done")
+                            }
                         }
                     }
-                )
+                }
             }
             
             when (val state = uiState) {
@@ -139,8 +181,11 @@ fun EventDetailScreen(
                                 val currentEvent = successState.event
                                 // Wise update: reset penalty if wings or mandatory status changes
                                 val shouldResetPenalty = currentEvent.mandatory != mandatory ||
-                                        currentEvent.targetWings != targetWings ||
-                                        currentEvent.mandatoryWings != mandatoryWings
+                                        currentEvent.targetWings.toSet() != targetWings.toSet() ||
+                                        currentEvent.mandatoryWings.toSet() != mandatoryWings.toSet() ||
+                                        currentEvent.studentsExcluded.toSet() != studentsExcluded.toSet() ||
+                                        currentEvent.negativeHours != negHours ||
+                                        currentEvent.positiveHours != posHours
                                 
                                 viewModel.updateEvent(currentEvent.copy(
                                     title = title,
@@ -191,11 +236,13 @@ fun EventDetailScreen(
                             }
                         )
                         
-                        FloatingActionButton(
-                            onClick = { showEditDialog = true },
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).padding(bottom = 80.dp)
-                        ) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit Event")
+                        if (successState.event.status != "ACTIVE") {
+                            FloatingActionButton(
+                                onClick = { showEditDialog = true },
+                                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).padding(bottom = 80.dp)
+                            ) {
+                                Icon(Icons.Default.Edit, contentDescription = "Edit Event")
+                            }
                         }
                     }
                 }
@@ -307,24 +354,27 @@ fun EventDetailContent(
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        Button(onClick = { showBulkDialog = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("Manual Batch Attendance")
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-        
         var showQrDialog by remember { mutableStateOf(false) }
-        if (showQrDialog) {
-            QRCodeDialog(data = event.id, onDismiss = { showQrDialog = false })
-        }
-        
-        OutlinedButton(onClick = { showQrDialog = true }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.QrCode, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Show Event QR Code")
-        }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        if (event.status == "ACTIVE") {
+            Button(onClick = { showBulkDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("Manual Batch Attendance")
+            }
+    
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            if (showQrDialog) {
+                QRCodeDialog(data = event.id, onDismiss = { showQrDialog = false })
+            }
+            
+            OutlinedButton(onClick = { showQrDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.QrCode, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Show Event QR Code")
+            }
+    
+            Spacer(modifier = Modifier.height(8.dp))
+        }
 
         OutlinedButton(onClick = onViewAttendees, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.Person, contentDescription = null)
@@ -332,8 +382,8 @@ fun EventDetailContent(
             Text("View Attendees")
         }
         
-        val canApplyPenalty = event.mandatory && event.negativeHours > 0 && (event.status == "ACTIVE" || event.status == "COMPLETED")
-        if (canApplyPenalty && !event.isPenaltyApplied) {
+        val canApplyPenalty = event.mandatory && event.negativeHours > 0 && (event.status == "ACTIVE" || event.status == "COMPLETED") && (!event.isPenaltyApplied)
+        if (canApplyPenalty) {
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = onAutoPenalty, 
@@ -387,9 +437,9 @@ fun BulkAttendanceDialog(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = bypass, onCheckedChange = { bypass = it })
                     Column {
-                        Text("Bypass Restrictions")
+                        Text("Bypass Target Wing Check")
                         Text(
-                            text = "Bypasses wing targeting and exclusion checks.",
+                            text = "Forces attendance marking even if student's wing is not targeted.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.secondary
                         )
@@ -408,6 +458,55 @@ fun BulkAttendanceDialog(
             }
         }
     )
+}
+
+@Composable
+fun AttendeeItem(attendee: Attendee) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        ),
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = attendee.name, 
+                    style = MaterialTheme.typography.bodyLarge, 
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                )
+                Text(
+                    text = "Roll: ${attendee.roll} • ${attendee.wing}", 
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            val isPenalty = attendee.status == "PENALTY"
+            Surface(
+                color = if (isPenalty) 
+                           MaterialTheme.colorScheme.errorContainer 
+                        else 
+                           MaterialTheme.colorScheme.primaryContainer,
+                shape = MaterialTheme.shapes.extraSmall
+            ) {
+                Text(
+                    text = attendee.status,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    color = if (isPenalty) 
+                               MaterialTheme.colorScheme.onErrorContainer 
+                            else 
+                               MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+    }
 }
 
 @Composable

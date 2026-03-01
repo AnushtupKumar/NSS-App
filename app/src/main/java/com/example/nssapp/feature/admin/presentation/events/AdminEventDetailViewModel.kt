@@ -27,14 +27,14 @@ class AdminEventDetailViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<EventDetailUiState>(EventDetailUiState.Loading)
     val uiState: StateFlow<EventDetailUiState> = _uiState.asStateFlow()
 
-    private val _attendees = MutableStateFlow<List<Student>>(emptyList())
-    val attendees: StateFlow<List<Student>> = _attendees.asStateFlow()
+    private val _attendees = MutableStateFlow<List<Attendee>>(emptyList())
+    val attendees: StateFlow<List<Attendee>> = _attendees.asStateFlow()
 
     fun loadEvent(eventId: String) {
         viewModelScope.launch {
             combine(
                 repository.getEvents(),
-                repository.getWings()
+                repository.getAllWings()
             ) { events, wings ->
                 val event = events.find { it.id == eventId }
                 if (event != null) {
@@ -53,21 +53,42 @@ class AdminEventDetailViewModel @Inject constructor(
             try {
                 // 1. Get all attendance documents for this event
                 val attendanceSnapshot = firestore.collection("events").document(eventId).collection("attendance").get().await()
-                val studentIds = attendanceSnapshot.documents.map { it.id }
-
-                if (studentIds.isEmpty()) {
+                
+                if (attendanceSnapshot.isEmpty) {
                     _attendees.value = emptyList()
                     return@launch
                 }
 
-                // 2. Fetch those students (batching in blocks of 10 if needed, but for simplicity we'll just query or fetch all active students and filter)
+                // Map studentId to status
+                val attendanceData = attendanceSnapshot.documents.associateBy({ it.id }, { it.getString("status") ?: "PRESENT" })
+                val studentIds = attendanceData.keys.toList()
+
+                // 2. Fetch those students
                  val studentsQuery = firestore.collection("students").get().await()
-                 val allStudents = studentsQuery.toObjects(Student::class.java).mapIndexed { index, student -> student.copy(id = studentsQuery.documents[index].id) }
+                 val allStudents = studentsQuery.documents.map { doc ->
+                     val student = doc.toObject(Student::class.java)!!
+                     val primaryWing = doc.getString("primaryWing")
+                     if (student.enrolledWings.isEmpty() && !primaryWing.isNullOrEmpty()) {
+                         student.copy(id = doc.id, enrolledWings = listOf(primaryWing))
+                     } else {
+                         student.copy(id = doc.id)
+                     }
+                 }
                  
-                 val attendedStudents = allStudents.filter { studentIds.contains(it.id) }
+                 val wingsSnapshot = firestore.collection("wings").get().await()
+                 val wingsMap = wingsSnapshot.documents.associateBy({ it.id }, { it.getString("name") ?: "Unknown" })
+
+                 val attendedStudents = allStudents.filter { studentIds.contains(it.id) }.map { student ->
+                     Attendee(
+                         id = student.id,
+                         roll = student.roll,
+                         name = student.name,
+                         wing = wingsMap[student.enrolledWings.firstOrNull()] ?: "Unknown Wing",
+                         status = attendanceData[student.id] ?: "PRESENT"
+                     )
+                 }
                  _attendees.value = attendedStudents
             } catch (e: Exception) {
-                 // Handle Error implicitly by empty list or log
                  _attendees.value = emptyList()
             }
         }
@@ -128,10 +149,10 @@ class AdminEventDetailViewModel @Inject constructor(
 
     fun updateEvent(event: Event, resetPenalty: Boolean = false) {
         viewModelScope.launch {
+            repository.updateEvent(event)
             if (resetPenalty) {
                 attendanceRepository.clearEventPenalties(event.id)
             }
-            repository.updateEvent(event)
         }
     }
 }
@@ -141,3 +162,11 @@ sealed class EventDetailUiState {
     data class Success(val event: Event, val wings: List<Wing>) : EventDetailUiState()
     data class Error(val message: String) : EventDetailUiState()
 }
+
+data class Attendee(
+    val id: String,
+    val roll: String,
+    val name: String,
+    val wing: String,
+    val status: String
+)

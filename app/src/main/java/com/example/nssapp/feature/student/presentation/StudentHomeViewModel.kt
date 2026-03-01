@@ -43,7 +43,7 @@ class StudentHomeViewModel @Inject constructor(
                 val attendedEventIds = attendedEventsResult.getOrNull() ?: emptyList()
                 
                 // Fetch events
-                studentRepository.getEventsForWing(student.primaryWing).collect { events ->
+                studentRepository.getEventsForWings(student.enrolledWings).collect { events ->
                     val totalEvents = events.size
                     val attendancePercentage = if (totalEvents > 0) {
                         // This is approximate. Logic: Count events that have passed? Or all events?
@@ -57,11 +57,26 @@ class StudentHomeViewModel @Inject constructor(
                         } else 0f
                     } else 0f
 
+                    // Calculate total hours
+                    var totalHours = 0.0
+                    for (event in events) {
+                        if (attendedEventIds.contains(event.id)) {
+                            totalHours += event.positiveHours
+                        } else if (event.mandatory && event.isPenaltyApplied && event.date < System.currentTimeMillis() && !event.studentsExcluded.contains(student.roll)) {
+                            // Only apply penalty if the student belongs to the mandatory wings (or all targeted if empty)
+                            val isMandatoryForStudent = event.mandatoryWings.isEmpty() || event.mandatoryWings.any { it in student.enrolledWings }
+                            if (isMandatoryForStudent) {
+                                totalHours -= event.negativeHours
+                            }
+                        }
+                    }
+
                     _uiState.value = StudentHomeUiState.Success(
                         student = student,
                         events = events,
                         attendancePercentage = attendancePercentage,
-                        attendedEventIds = attendedEventIds
+                        attendedEventIds = attendedEventIds,
+                        totalHours = totalHours
                     )
                 }
             } else {
@@ -77,7 +92,8 @@ sealed class StudentHomeUiState {
         val student: Student,
         val events: List<Event>,
         val attendancePercentage: Float,
-        val attendedEventIds: List<String>
+        val attendedEventIds: List<String>,
+        val totalHours: Double
     ) : StudentHomeUiState()
     data class Error(val message: String) : StudentHomeUiState()
 }

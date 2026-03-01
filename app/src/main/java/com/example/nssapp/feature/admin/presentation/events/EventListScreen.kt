@@ -51,14 +51,33 @@ fun EventListScreen(
                     }
                 }
                 is EventUiState.Error -> {
-                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = state.message, color = MaterialTheme.colorScheme.error)
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(androidx.compose.material.icons.Icons.Default.DateRange, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.height(8.dp))
+                            Text(text = state.message, color = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.height(16.dp))
+                            Button(onClick = { viewModel.loadData() }) {
+                                Text("Retry")
+                            }
+                        }
                     }
                 }
                 is EventUiState.Success -> {
-                    LazyColumn {
-                        items(state.events) { event ->
-                            EventItem(event, onClick = { onEventClick(event.id) })
+                    if (state.events.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.secondary)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("No events found", style = MaterialTheme.typography.titleMedium)
+                                Text("Tap '+' to create one!", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    } else {
+                        LazyColumn {
+                            items(state.events) { event ->
+                                EventItem(event, onClick = { onEventClick(event.id) })
+                            }
                         }
                     }
                     

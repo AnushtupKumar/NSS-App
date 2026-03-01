@@ -159,6 +159,22 @@ fun EventFormDialog(
                     Text("Target Audience", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                     Text("Select wings that can attend this event:", style = MaterialTheme.typography.bodySmall)
                     
+                    val allTargetSelected = wings.isNotEmpty() && selectedTargetWings.size == wings.size
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = allTargetSelected,
+                            onCheckedChange = { checked ->
+                                selectedTargetWings.clear()
+                                if (checked) {
+                                    selectedTargetWings.addAll(wings.map { it.id })
+                                } else {
+                                    selectedMandatoryWings.clear()
+                                }
+                            }
+                        )
+                        Text("All Wings", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+                    }
+
                     wings.forEach { wing ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
@@ -170,7 +186,10 @@ fun EventFormDialog(
                                     }
                                 }
                             )
-                            Text(wing.name)
+                            Text(
+                                text = if (wing.isDeleted) "${wing.name} (Deleted)" else wing.name,
+                                color = if (wing.isDeleted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
@@ -216,28 +235,46 @@ fun EventFormDialog(
                     if (mandatory) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Text("Mandatory For (Specific Wings):", style = MaterialTheme.typography.titleSmall)
-                        Text("If none selected, all target wings are mandatory.", style = MaterialTheme.typography.bodySmall)
+                        Text("Only select if the penalty should be limited to specific wings. If empty, all targeted wings are mandatory.", style = MaterialTheme.typography.bodySmall)
                         
                         val availableOptions = wings.filter { selectedTargetWings.contains(it.id) }
                         if (availableOptions.isEmpty()) {
-                            Text("Please select Target Wings above first.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                        }
-                        
-                        availableOptions.forEach { wing ->
-                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                RadioButton(
-                                    selected = selectedMandatoryWings.contains(wing.id),
-                                    onClick = { 
-                                        if (selectedMandatoryWings.contains(wing.id)) {
-                                            selectedMandatoryWings.remove(wing.id)
-                                        } else {
-                                            selectedMandatoryWings.add(wing.id)
+                            Text("Please select Target Wings first.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            val allMandatorySelected = selectedMandatoryWings.size == availableOptions.size
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = allMandatorySelected,
+                                    onCheckedChange = { checked ->
+                                        selectedMandatoryWings.clear()
+                                        if (checked) {
+                                            selectedMandatoryWings.addAll(availableOptions.map { it.id })
                                         }
                                     }
                                 )
-                                Text(wing.name)
+                                Text("All Targeted Wings", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+                            }
+
+                            availableOptions.forEach { wing ->
+                                 Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                        checked = selectedMandatoryWings.contains(wing.id),
+                                        onCheckedChange = { checked ->
+                                            if (checked) {
+                                                selectedMandatoryWings.add(wing.id)
+                                            } else {
+                                                selectedMandatoryWings.remove(wing.id)
+                                            }
+                                        }
+                                    )
+                                    Text(
+                                        text = if (wing.isDeleted) "${wing.name} (Deleted)" else wing.name,
+                                        color = if (wing.isDeleted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
                             }
                         }
+
 
                         Spacer(modifier = Modifier.height(12.dp))
                         Text("Excluded Students (Penalty won't apply):", style = MaterialTheme.typography.titleSmall)

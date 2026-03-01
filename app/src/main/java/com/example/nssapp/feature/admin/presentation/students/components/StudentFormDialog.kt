@@ -22,6 +22,7 @@ fun StudentFormDialog(
     var email by remember { mutableStateOf(initialStudent?.email ?: "") }
     var roll by remember { mutableStateOf(initialStudent?.roll ?: "") }
     var password by remember { mutableStateOf(initialStudent?.password ?: "") }
+    var showError by remember { mutableStateOf(false) }
     
     val selectedWings = remember { mutableStateListOf<String>().apply {
         addAll(initialStudent?.enrolledWings ?: emptyList())
@@ -53,6 +54,15 @@ fun StudentFormDialog(
                             Text(wing.name)
                         }
                     }
+                    
+                    if (showError && selectedWings.isEmpty()) {
+                        Text(
+                            text = "Please select at least one wing", 
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
                 }
             }
         },
@@ -60,7 +70,10 @@ fun StudentFormDialog(
             Button(
                 onClick = { 
                     if (name.isNotBlank() && email.isNotBlank() && roll.isNotBlank() && selectedWings.isNotEmpty() && password.isNotBlank()) {
+                         showError = false
                          onConfirm(name, email, roll, selectedWings.toList(), password)
+                    } else {
+                         showError = true
                     }
                 }
             ) {

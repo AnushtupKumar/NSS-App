@@ -1,5 +1,7 @@
 package com.example.nssapp.core.domain.model
 
+import com.google.firebase.firestore.PropertyName
+
 data class Event(
     val id: String = "",
     val title: String = "",
@@ -11,7 +13,9 @@ data class Event(
     val mandatory: Boolean = false,
     val studentsExcluded: List<String> = emptyList(),
     val createdBy: String = "", // Admin ID
-    val isPenaltyApplied: Boolean = false,
+    @get:PropertyName("isPenaltyApplied")
+    @set:PropertyName("isPenaltyApplied")
+    var isPenaltyApplied: Boolean = false,
     val status: String = "UPCOMING", // UPCOMING, ACTIVE, PAUSED, COMPLETED
     val startTime: Long = 0,
     val endTime: Long = 0,

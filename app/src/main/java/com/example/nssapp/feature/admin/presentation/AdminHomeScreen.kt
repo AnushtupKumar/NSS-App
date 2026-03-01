@@ -20,9 +20,12 @@ import com.example.nssapp.feature.admin.presentation.profile.AdminProfileScreen
 import com.example.nssapp.feature.admin.presentation.scan.ScanQRScreen
 import com.example.nssapp.feature.admin.presentation.students.StudentListScreen
 
+import com.example.nssapp.feature.admin.presentation.wings.WingManagementScreen
+
 sealed class AdminScreen(val route: String, val title: String, val icon: ImageVector) {
     object Events : AdminScreen("admin_events", "Events", Icons.Default.DateRange)
     object Students : AdminScreen("admin_students", "Students", Icons.Default.Person)
+    object Wings : AdminScreen("admin_wings", "Wings", Icons.Default.Edit)
     object Profile : AdminScreen("admin_profile", "Profile", Icons.Default.Person) // Should use different icon maybe? Person is already used.
     // Let's use AccountCircle or similar if available, or just keep Person but maybe differentiate.
     // Actually Students uses Person. Profile should use AccountCircle or Face.
@@ -48,6 +51,7 @@ fun AdminHomeScreen(
     val items = listOf(
         AdminScreen.Events,
         AdminScreen.Students,
+        AdminScreen.Wings,
         AdminScreen.Profile
     )
 
@@ -82,6 +86,7 @@ fun AdminHomeScreen(
         ) {
             composable(AdminScreen.Events.route) { EventListScreen(onEventClick = onEventClick) }
             composable(AdminScreen.Students.route) { StudentListScreen() }
+            composable(AdminScreen.Wings.route) { WingManagementScreen() }
             composable(AdminScreen.Profile.route) { AdminProfileScreen(onLogout = onLogout) }
         }
     }

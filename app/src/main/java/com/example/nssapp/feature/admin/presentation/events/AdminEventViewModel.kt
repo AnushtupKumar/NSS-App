@@ -28,7 +28,7 @@ class AdminEventViewModel @Inject constructor(
         loadData()
     }
 
-    private fun loadData() {
+    fun loadData() {
         viewModelScope.launch {
             combine(
                 repository.getEvents(),

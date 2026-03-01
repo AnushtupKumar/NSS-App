@@ -1,14 +1,23 @@
 package com.example.nssapp.feature.admin.domain.repository
 
+import com.example.nssapp.core.domain.model.Admin
+
 import com.example.nssapp.core.domain.model.Event
 import com.example.nssapp.core.domain.model.Student
 import com.example.nssapp.core.domain.model.Wing
 import kotlinx.coroutines.flow.Flow
 
 interface AdminRepository {
+    // Admins
+    fun getAdmins(): Flow<List<Admin>>
+
     // Wings
-    fun getWings(): Flow<List<Wing>>
-    suspend fun createWing(wing: Wing): Result<Unit>
+    fun getWings(): Flow<List<Wing>> // Only active
+    fun getAllWings(): Flow<List<Wing>> // Including deleted
+    fun getWingById(wingId: String): Flow<Wing?>
+    suspend fun createWing(wing: Wing, adminIds: List<String> = emptyList()): Result<Unit>
+    suspend fun updateWing(wing: Wing): Result<Unit>
+    suspend fun deleteWing(wingId: String): Result<Unit>
     
     // Students
     fun getStudents(wingId: String? = null): Flow<List<Student>>

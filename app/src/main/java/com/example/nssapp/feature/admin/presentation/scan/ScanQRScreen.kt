@@ -21,6 +21,8 @@ fun ScanQRScreen(
     var selectedEventId by remember { mutableStateOf("") }
     var rollNo by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     // Auto-select first event if available and none selected
     LaunchedEffect(events) {
@@ -30,7 +32,8 @@ fun ScanQRScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Mark Attendance") }) }
+        topBar = { TopAppBar(title = { Text("Mark Attendance") }) },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -125,42 +128,20 @@ fun ScanQRScreen(
                 }
             }
             
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            // Status Message
-            when (val state = uiState) {
-                is AttendanceUiState.Success -> {
-                    Surface(
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = state.message, 
-                            color = MaterialTheme.colorScheme.onSecondaryContainer, 
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(16.dp).align(Alignment.CenterHorizontally)
-                        )
-                    }
-                    LaunchedEffect(state) {
+            // Status Message logic moved to LaunchedEffect for Snackbars
+            LaunchedEffect(uiState) {
+                when (val state = uiState) {
+                    is AttendanceUiState.Success -> {
+                        snackbarHostState.showSnackbar(state.message)
                         rollNo = ""
+                        viewModel.resetState()
                     }
-                }
-                is AttendanceUiState.Error -> {
-                    Surface(
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = state.message, 
-                            color = MaterialTheme.colorScheme.onErrorContainer, 
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(16.dp).align(Alignment.CenterHorizontally)
-                        )
+                    is AttendanceUiState.Error -> {
+                        snackbarHostState.showSnackbar(state.message)
+                        viewModel.resetState()
                     }
+                    else -> {}
                 }
-                else -> {}
             }
         }
     }

@@ -28,10 +28,12 @@ class StudentRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun getEventsForWing(wingId: String): Flow<List<Event>> {
-        // Query events where targetWings contains wingId
+    override fun getEventsForWings(wingIds: List<String>): Flow<List<Event>> {
+        if (wingIds.isEmpty()) {
+            return kotlinx.coroutines.flow.flowOf(emptyList())
+        }
         return firestore.collection("events")
-            .whereArrayContains("targetWings", wingId)
+            .whereArrayContainsAny("targetWings", wingIds)
             .snapshots()
             .map { it.toObjects(Event::class.java) }
     }

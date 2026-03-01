@@ -62,7 +62,7 @@ fun StudentHomeScreen(
                 }
                 is StudentHomeUiState.Success -> {
                     // Header with Stats
-                    StatsHeader(state.student.name, state.attendancePercentage)
+                    StatsHeader(state.student.name, state.attendancePercentage, state.totalHours)
                     
                     Spacer(modifier = Modifier.height(16.dp))
                     
@@ -96,7 +96,7 @@ fun StudentHomeScreen(
 }
 
 @Composable
-fun StatsHeader(name: String, percentage: Float) {
+fun StatsHeader(name: String, percentage: Float, totalHours: Double) {
     Surface(
         color = MaterialTheme.colorScheme.primaryContainer,
         modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -110,6 +110,12 @@ fun StatsHeader(name: String, percentage: Float) {
             Column {
                 Text("Welcome,", style = MaterialTheme.typography.titleMedium)
                 Text(name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Total Hours: $totalHours",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
             
             Box(contentAlignment = Alignment.Center) {
@@ -147,7 +153,7 @@ fun StudentEventItem(event: Event, isAttended: Boolean) {
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            Text(text = "Type: ${event.type}", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = "Type: ${event.description}", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(text = "Date: ${dateFormat.format(Date(event.date))}", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             
             if (event.mandatory) {
