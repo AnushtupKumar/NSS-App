@@ -25,6 +25,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
@@ -133,16 +134,35 @@ fun ScanScreen(
                 )
                 
                 // Overlay for scanning area or instructions
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                        contentColor = MaterialTheme.colorScheme.surface,
-                        shape = MaterialTheme.shapes.medium
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // Darken background
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 100.dp, bottom = 100.dp, start = 40.dp, end = 40.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "Align QR code within frame",
-                            modifier = Modifier.padding(16.dp)
-                        )
+                        Surface(
+                            color = Color.Transparent,
+                            shape = MaterialTheme.shapes.extraLarge,
+                            border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.size(250.dp)
+                        ) {}
+                    }
+                    
+                    Box(modifier = Modifier.fillMaxSize().padding(bottom = 60.dp), contentAlignment = Alignment.BottomCenter) {
+                         Surface(
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                            shape = MaterialTheme.shapes.large,
+                            shadowElevation = 8.dp
+                        ) {
+                            Text(
+                                text = "Align QR code within the frame",
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                            )
+                        }
                     }
                 }
                 

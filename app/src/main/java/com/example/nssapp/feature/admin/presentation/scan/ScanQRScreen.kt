@@ -39,77 +39,126 @@ fun ScanQRScreen(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Event Selector
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = !expanded }
-            ) {
-                OutlinedTextField(
-                    value = events.find { it.id == selectedEventId }?.title ?: "Select Event",
-                    onValueChange = {},
-                    readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
-                )
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    events.forEach { event ->
-                        DropdownMenuItem(
-                            text = { Text(event.title) },
-                            onClick = {
-                                selectedEventId = event.id
-                                expanded = false
-                            }
-                        )
-                    }
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            OutlinedTextField(
-                value = rollNo,
-                onValueChange = { rollNo = it },
-                label = { Text("Student Roll No") },
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Button(
-                onClick = { 
-                    if (selectedEventId.isNotEmpty() && rollNo.isNotBlank()) {
-                         viewModel.markAttendance(selectedEventId, rollNo)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                enabled = uiState !is AttendanceUiState.Loading
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
-                if (uiState is AttendanceUiState.Loading) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
-                } else {
-                    Text("Mark Present")
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Scan or Enter Roll No", 
+                        style = MaterialTheme.typography.titleLarge, 
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(bottom = 24.dp)
+                    )
+
+                    // Event Selector
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = !expanded }
+                    ) {
+                        OutlinedTextField(
+                            value = events.find { it.id == selectedEventId }?.title ?: "Select Event",
+                            onValueChange = {},
+                            readOnly = true,
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                            )
+                        )
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            events.forEach { event ->
+                                DropdownMenuItem(
+                                    text = { Text(event.title, style = MaterialTheme.typography.bodyLarge) },
+                                    onClick = {
+                                        selectedEventId = event.id
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    OutlinedTextField(
+                        value = rollNo,
+                        onValueChange = { rollNo = it },
+                        label = { Text("Student Roll No") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.medium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                        )
+                    )
+                    
+                    Spacer(modifier = Modifier.height(32.dp))
+                    
+                    Button(
+                        onClick = { 
+                            if (selectedEventId.isNotEmpty() && rollNo.isNotBlank()) {
+                                 viewModel.markAttendance(selectedEventId, rollNo)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = MaterialTheme.shapes.medium,
+                        enabled = uiState !is AttendanceUiState.Loading
+                    ) {
+                        if (uiState is AttendanceUiState.Loading) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                        } else {
+                            Text("Mark Present", style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
                 }
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(32.dp))
             
             // Status Message
             when (val state = uiState) {
                 is AttendanceUiState.Success -> {
-                    Text(text = state.message, color = Color(0xFF4CAF50), style = MaterialTheme.typography.titleMedium)
-                    // Clear input on success?
-                    // rollNo = "" // Optional: Keep it to avoid typing again if checking same student? No, usually clear it.
-                    // Let's clear it in a side effect.
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = state.message, 
+                            color = MaterialTheme.colorScheme.onSecondaryContainer, 
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(16.dp).align(Alignment.CenterHorizontally)
+                        )
+                    }
                     LaunchedEffect(state) {
                         rollNo = ""
                     }
                 }
                 is AttendanceUiState.Error -> {
-                    Text(text = state.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = state.message, 
+                            color = MaterialTheme.colorScheme.onErrorContainer, 
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(16.dp).align(Alignment.CenterHorizontally)
+                        )
+                    }
                 }
                 else -> {}
             }

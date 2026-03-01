@@ -12,16 +12,23 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import com.example.nssapp.core.domain.model.Student
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
 @HiltViewModel
 class AdminEventDetailViewModel @Inject constructor(
     private val repository: AdminRepository,
-    private val attendanceRepository: AttendanceRepository
+    private val attendanceRepository: AttendanceRepository,
+    private val firestore: FirebaseFirestore // Injecting directly for quick query, ideally should be in repository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<EventDetailUiState>(EventDetailUiState.Loading)
     val uiState: StateFlow<EventDetailUiState> = _uiState.asStateFlow()
+
+    private val _attendees = MutableStateFlow<List<Student>>(emptyList())
+    val attendees: StateFlow<List<Student>> = _attendees.asStateFlow()
 
     fun loadEvent(eventId: String) {
         viewModelScope.launch {
@@ -41,6 +48,31 @@ class AdminEventDetailViewModel @Inject constructor(
         }
     }
 
+    fun loadAttendees(eventId: String) {
+        viewModelScope.launch {
+            try {
+                // 1. Get all attendance documents for this event
+                val attendanceSnapshot = firestore.collection("events").document(eventId).collection("attendance").get().await()
+                val studentIds = attendanceSnapshot.documents.map { it.id }
+
+                if (studentIds.isEmpty()) {
+                    _attendees.value = emptyList()
+                    return@launch
+                }
+
+                // 2. Fetch those students (batching in blocks of 10 if needed, but for simplicity we'll just query or fetch all active students and filter)
+                 val studentsQuery = firestore.collection("students").get().await()
+                 val allStudents = studentsQuery.toObjects(Student::class.java).mapIndexed { index, student -> student.copy(id = studentsQuery.documents[index].id) }
+                 
+                 val attendedStudents = allStudents.filter { studentIds.contains(it.id) }
+                 _attendees.value = attendedStudents
+            } catch (e: Exception) {
+                 // Handle Error implicitly by empty list or log
+                 _attendees.value = emptyList()
+            }
+        }
+    }
+
     fun deleteEvent(eventId: String, onSuccess: () -> Unit) {
         viewModelScope.launch {
             val result = repository.deleteEvent(eventId)
@@ -48,7 +80,6 @@ class AdminEventDetailViewModel @Inject constructor(
                 onSuccess()
             } else {
                  // Handle error? Show toast?
-                 // For now just stay.
             }
         }
     }
@@ -56,13 +87,11 @@ class AdminEventDetailViewModel @Inject constructor(
     fun updateStatus(eventId: String, status: String) {
         viewModelScope.launch {
             repository.updateEventStatus(eventId, status)
-            // Flow will auto-update UI
         }
     }
 
     fun exportAttendance(eventId: String) {
         // Placeholder for CSV export logic
-        // In a real app, query attendance subcollection, build CSV string, use Intent to share.
     }
 
     fun markBulkAttendance(eventId: String, rollString: String, status: String, bypass: Boolean, onResult: (List<String>) -> Unit) {
@@ -72,7 +101,7 @@ class AdminEventDetailViewModel @Inject constructor(
                 .filter { it.isNotEmpty() }
             
             if (rolls.isEmpty()) {
-                onResult(emptyList()) // Nothing to do
+                onResult(emptyList()) 
                 return@launch
             }
 
@@ -80,16 +109,15 @@ class AdminEventDetailViewModel @Inject constructor(
             if (result.isSuccess) {
                 onResult(result.getOrDefault(emptyList()))
             } else {
-                 // Handle failure?
-                 onResult(rolls) // All failed?
+                 onResult(rolls) 
             }
         }
     }
+    
     fun applyPenalty(eventId: String, onResult: (Int) -> Unit) {
         viewModelScope.launch {
             val result = attendanceRepository.applyPenaltyForEvent(eventId)
             if (result.isSuccess) {
-                // Refresh event to see status change
                 loadEvent(eventId)
                 onResult(result.getOrDefault(0))
             } else {
@@ -98,10 +126,12 @@ class AdminEventDetailViewModel @Inject constructor(
         }
     }
 
-    fun updateEvent(event: Event) {
+    fun updateEvent(event: Event, resetPenalty: Boolean = false) {
         viewModelScope.launch {
+            if (resetPenalty) {
+                attendanceRepository.clearEventPenalties(event.id)
+            }
             repository.updateEvent(event)
-             // Flow will auto-update UI
         }
     }
 }

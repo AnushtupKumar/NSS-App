@@ -3,6 +3,7 @@ package com.example.nssapp.feature.admin.presentation.profile
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Person
@@ -37,17 +38,33 @@ fun AdminProfileScreen(
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(48.dp))
-                Spacer(modifier = Modifier.width(16.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Row(modifier = Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(64.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Person, 
+                        contentDescription = null, 
+                        modifier = Modifier.padding(12.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Spacer(modifier = Modifier.width(20.dp))
                 Column {
                     val email = when(val state = uiState) {
                         is AdminProfileUiState.Success -> state.email
                         else -> "Loading..."
                     }
-                    Text(text = "Email", style = MaterialTheme.typography.labelSmall)
-                    Text(text = email, style = MaterialTheme.typography.bodyLarge)
+                    Text(text = "Admin Email", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Text(text = email, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         }

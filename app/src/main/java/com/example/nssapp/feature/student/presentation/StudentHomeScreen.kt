@@ -135,20 +135,34 @@ fun StudentEventItem(event: Event, isAttended: Boolean) {
     val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text(text = event.title, style = MaterialTheme.typography.titleMedium)
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(text = event.title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
                 if (isAttended) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = "Attended", tint = Color(0xFF4CAF50))
+                    Icon(Icons.Default.CheckCircle, contentDescription = "Attended", tint = Color(0xFF10B981), modifier = Modifier.size(28.dp))
                 }
             }
-            Text(text = "Type: ${event.type}", style = MaterialTheme.typography.bodyMedium)
-            Text(text = "Date: ${dateFormat.format(Date(event.date))}", style = MaterialTheme.typography.bodySmall)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = "Type: ${event.type}", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = "Date: ${dateFormat.format(Date(event.date))}", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             
             if (event.mandatory) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(text = "MANDATORY", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = "MANDATORY",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
             }
         }
     }

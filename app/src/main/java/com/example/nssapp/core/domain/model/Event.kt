@@ -3,7 +3,7 @@ package com.example.nssapp.core.domain.model
 data class Event(
     val id: String = "",
     val title: String = "",
-    val type: String = "", // "Camp", "Meeting"
+    val description: String = "", // Event description
     val date: Long = 0,
     val positiveHours: Double = 0.0,
     val negativeHours: Double = 0.0,

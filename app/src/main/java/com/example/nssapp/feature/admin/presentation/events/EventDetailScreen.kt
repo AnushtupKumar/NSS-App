@@ -28,6 +28,7 @@ import com.google.zxing.common.BitMatrix
 import kotlinx.coroutines.launch
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.ui.window.Dialog
 
@@ -43,9 +44,13 @@ fun EventDetailScreen(
     }
 
     val uiState by viewModel.uiState.collectAsState()
+    val attendees by viewModel.attendees.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showAttendees by remember { mutableStateOf(false) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -58,10 +63,11 @@ fun EventDetailScreen(
                     }
                 },
                 actions = {
-
                     if (uiState is EventDetailUiState.Success) {
-                        val state = uiState as EventDetailUiState.Success
-                        IconButton(onClick = { viewModel.deleteEvent(eventId) { navController.popBackStack() } }) {
+                        IconButton(onClick = { viewModel.exportAttendance(eventId) }) {
+                            Icon(Icons.Default.Share, contentDescription = "Export CSV", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        IconButton(onClick = { showDeleteConfirm = true }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                         }
                     }
@@ -70,6 +76,53 @@ fun EventDetailScreen(
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+            if (showDeleteConfirm) {
+                 AlertDialog(
+                    onDismissRequest = { showDeleteConfirm = false },
+                    title = { Text("Delete Event") },
+                    text = { Text("Are you sure you want to delete this event? This will also permanently erase all attendance records associated with it.") },
+                    confirmButton = {
+                        Button(
+                            onClick = { 
+                                showDeleteConfirm = false
+                                viewModel.deleteEvent(eventId) { navController.popBackStack() } 
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("Delete")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteConfirm = false }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+            if (showAttendees) {
+                 AlertDialog(
+                    onDismissRequest = { showAttendees = false },
+                    title = { Text("Attendees") },
+                    text = { 
+                        if (attendees.isEmpty()) {
+                            Text("No attendees yet.")
+                        } else {
+                            androidx.compose.foundation.lazy.LazyColumn {
+                                items(attendees.size) { index ->
+                                    val student = attendees[index]
+                                    Text("${student.name} (${student.roll})", modifier = Modifier.padding(vertical = 4.dp))
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showAttendees = false }) {
+                            Text("Close")
+                        }
+                    }
+                )
+            }
+            
             when (val state = uiState) {
                 is EventDetailUiState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 is EventDetailUiState.Error -> Text(state.message, color = MaterialTheme.colorScheme.error, modifier = Modifier.align(Alignment.Center))
@@ -82,10 +135,16 @@ fun EventDetailScreen(
                             initialEvent = successState.event,
                             wings = successState.wings,
                             onDismiss = { showEditDialog = false },
-                            onConfirm = { title, type, date, startTime, endTime, posHours, negHours, mandatory, targetWings, mandatoryWings ->
-                                viewModel.updateEvent(successState.event.copy(
+                            onConfirm = { title, description, date, startTime, endTime, posHours, negHours, mandatory, targetWings, mandatoryWings, studentsExcluded ->
+                                val currentEvent = successState.event
+                                // Wise update: reset penalty if wings or mandatory status changes
+                                val shouldResetPenalty = currentEvent.mandatory != mandatory ||
+                                        currentEvent.targetWings != targetWings ||
+                                        currentEvent.mandatoryWings != mandatoryWings
+                                
+                                viewModel.updateEvent(currentEvent.copy(
                                     title = title,
-                                    type = type,
+                                    description = description,
                                     date = date,
                                     startTime = startTime,
                                     endTime = endTime,
@@ -93,20 +152,20 @@ fun EventDetailScreen(
                                     negativeHours = negHours,
                                     mandatory = mandatory,
                                     targetWings = targetWings,
-                                    mandatoryWings = mandatoryWings
-                                ))
+                                    mandatoryWings = mandatoryWings,
+                                    studentsExcluded = studentsExcluded,
+                                    isPenaltyApplied = if (shouldResetPenalty) false else currentEvent.isPenaltyApplied
+                                ), resetPenalty = shouldResetPenalty)
                                 showEditDialog = false
                             }
                         )
                     }
 
-                    // Floating Edit Button to ensure visibility if TopBar is crowded or just for convenience
                     Box(modifier = Modifier.fillMaxSize()) {
                         EventDetailContent(
                             event = successState.event,
-                            wings = successState.wings, // Pass wings for display names
+                            wings = successState.wings,
                             onStatusChange = { newStatus -> viewModel.updateStatus(eventId, newStatus) },
-                            onExportParams = { viewModel.exportAttendance(eventId) },
                             onMarkBulk = { rolls, status, bypass -> 
                                 viewModel.markBulkAttendance(eventId, rolls, status, bypass) { failedRolls ->
                                     scope.launch {
@@ -125,12 +184,16 @@ fun EventDetailScreen(
                                         snackbarHostState.showSnackbar(msg)
                                     }
                                 }
+                            },
+                            onViewAttendees = {
+                                viewModel.loadAttendees(eventId)
+                                showAttendees = true
                             }
                         )
                         
                         FloatingActionButton(
                             onClick = { showEditDialog = true },
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).padding(bottom = 80.dp) // Adjust for Snackbar? Or just normal
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).padding(bottom = 80.dp)
                         ) {
                             Icon(Icons.Default.Edit, contentDescription = "Edit Event")
                         }
@@ -146,9 +209,9 @@ fun EventDetailContent(
     event: Event,
     wings: List<Wing>,
     onStatusChange: (String) -> Unit,
-    onExportParams: () -> Unit,
     onMarkBulk: (String, String, Boolean) -> Unit,
-    onAutoPenalty: () -> Unit
+    onAutoPenalty: () -> Unit,
+    onViewAttendees: () -> Unit
 ) {
     val dateFormat = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
     var showBulkDialog by remember { mutableStateOf(false) }
@@ -156,8 +219,8 @@ fun EventDetailContent(
     if (showBulkDialog) {
         BulkAttendanceDialog(
             onDismiss = { showBulkDialog = false },
-            onConfirm = { rolls, status, bypass ->
-                onMarkBulk(rolls, status, bypass)
+            onConfirm = { rolls, _, bypass ->
+                onMarkBulk(rolls, "PRESENT", bypass)
                 showBulkDialog = false
             }
         )
@@ -167,41 +230,49 @@ fun EventDetailContent(
         Text(text = event.title, style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(8.dp))
         
-        Card(modifier = Modifier.fillMaxWidth()) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Status: ", style = MaterialTheme.typography.titleMedium)
                     StatusChip(status = event.status)
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Type: ${event.type}")
-                Text("Date: ${dateFormat.format(Date(event.date))}")
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Description: ${event.description}", style = MaterialTheme.typography.bodyLarge)
+                Text("Date: ${dateFormat.format(Date(event.date))}", style = MaterialTheme.typography.bodyLarge)
                 if (event.startTime > 0) {
                     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-                    Text("Time: ${timeFormat.format(Date(event.startTime))} - ${timeFormat.format(Date(event.endTime))}")
+                    Text("Time: ${timeFormat.format(Date(event.startTime))} - ${timeFormat.format(Date(event.endTime))}", style = MaterialTheme.typography.bodyLarge)
                 }
                 
-                Spacer(modifier = Modifier.height(8.dp))
-                Divider()
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(12.dp))
                 
-                Text("Hours: +${event.positiveHours} / -${event.negativeHours}", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = "Hours: +${event.positiveHours} / -${event.negativeHours}", 
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
                 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 
-                Text("Target Wings:", style = MaterialTheme.typography.titleSmall)
+                Text("Target Wings:", style = MaterialTheme.typography.labelMedium)
                 val targetWingNames = wings.filter { event.targetWings.contains(it.id) }.joinToString(", ") { it.name }
-                Text(targetWingNames.ifEmpty { "None" })
+                Text(targetWingNames.ifEmpty { "None" }, style = MaterialTheme.typography.bodyMedium)
                 
                 if (event.mandatory) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text("Mandatory For (Penalty Applies):", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Mandatory For (Penalty Applies):", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                     val mandatoryWingNames = if (event.mandatoryWings.isNotEmpty()) {
                         wings.filter { event.mandatoryWings.contains(it.id) }.joinToString(", ") { it.name }
                     } else {
                         "All Targeted Wings"
                     }
-                    Text(mandatoryWingNames)
+                    Text(mandatoryWingNames, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
@@ -209,7 +280,9 @@ fun EventDetailContent(
         Spacer(modifier = Modifier.height(24.dp))
         
         // Controls
-        Text("Actions", style = MaterialTheme.typography.titleSmall)
+        Text("Actions", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.height(8.dp))
+
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (event.status != "COMPLETED") {
                 if (event.status == "PAUSED" || event.status == "UPCOMING") {
@@ -219,33 +292,26 @@ fun EventDetailContent(
                         Text("Start / Resume")
                     }
                 } else if (event.status == "ACTIVE") {
-                     Button(onClick = { onStatusChange("PAUSED") }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color.hsv(30f, 0.8f, 0.9f))) {
-                        // Icon pause? Standard icons might not have pause filled, using text mainly.
-                        Text("Pause")
+                     Button(
+                         onClick = { onStatusChange("PAUSED") }, 
+                         modifier = Modifier.weight(1f), 
+                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                     ) {
+                        Text("Pause Event")
                     }
                 }
-                
-                Button(onClick = { onStatusChange("COMPLETED") }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
-                    Text("End Event")
-                }
             } else {
-                 Text("Event Ended", color = MaterialTheme.colorScheme.secondary)
+                 Text("Event is Completed", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelLarge)
             }
         }
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        OutlinedButton(onClick = onExportParams, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.Share, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Export Attendance (CSV)")
-        }
-        
         Button(onClick = { showBulkDialog = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("Batch Attendance / Penalty (Manual)")
+            Text("Manual Batch Attendance")
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         
         var showQrDialog by remember { mutableStateOf(false) }
         if (showQrDialog) {
@@ -255,10 +321,19 @@ fun EventDetailContent(
         OutlinedButton(onClick = { showQrDialog = true }, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.QrCode, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Show QR Code")
+            Text("Show Event QR Code")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedButton(onClick = onViewAttendees, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Person, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("View Attendees")
         }
         
-        if (event.negativeHours > 0 && !event.isPenaltyApplied) {
+        val canApplyPenalty = event.mandatory && event.negativeHours > 0 && (event.status == "ACTIVE" || event.status == "COMPLETED")
+        if (canApplyPenalty && !event.isPenaltyApplied) {
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = onAutoPenalty, 
@@ -269,7 +344,18 @@ fun EventDetailContent(
             }
         } else if (event.isPenaltyApplied) {
             Spacer(modifier = Modifier.height(16.dp))
-            Text("Penalty Applied to Absentees", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium, modifier = Modifier.align(Alignment.CenterHorizontally))
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) {
+                Text(
+                    text = "Penalty Already Applied", 
+                    color = MaterialTheme.colorScheme.onErrorContainer, 
+                    style = MaterialTheme.typography.labelMedium, 
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            }
         }
     }
 }
@@ -292,29 +378,28 @@ fun BulkAttendanceDialog(
                 OutlinedTextField(
                     value = rollNumbers,
                     onValueChange = { rollNumbers = it },
+                    placeholder = { Text("e.g. 2101, 2102, 2105") },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Status:")
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(selected = status == "PRESENT", onClick = { status = "PRESENT" })
-                    Text("Present")
-                    Spacer(modifier = Modifier.width(16.dp))
-                    RadioButton(selected = status == "PENALTY", onClick = { status = "PENALTY"; bypass = true }) // Auto-check bypass for penalty
-                    Text("Penalty")
-                }
                 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = bypass, onCheckedChange = { bypass = it })
-                    Text("Bypass Wing/Exclusion Checks")
-                    // Tooltip: "Useful for explicitly adding students to negative hours even if not mandatory"
+                    Column {
+                        Text("Bypass Restrictions")
+                        Text(
+                            text = "Bypasses wing targeting and exclusion checks.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(rollNumbers, status, bypass) }) {
-                Text("Submit")
+            Button(onClick = { onConfirm(rollNumbers, "PRESENT", bypass) }) {
+                Text("Mark Present")
             }
         },
         dismissButton = {

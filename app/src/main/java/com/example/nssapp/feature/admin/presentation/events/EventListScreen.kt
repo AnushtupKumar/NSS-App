@@ -66,8 +66,8 @@ fun EventListScreen(
                         EventFormDialog(
                             wings = state.wings,
                             onDismiss = { showAddEventDialog = false },
-                            onConfirm = { title, type, date, startTime, endTime, posHours, negHours, mandatory, targetWings, mandatoryWings ->
-                                viewModel.addEvent(title, type, date, startTime, endTime, posHours, negHours, mandatory, targetWings, mandatoryWings)
+                            onConfirm = { title, description, date, startTime, endTime, posHours, negHours, mandatory, targetWings, mandatoryWings, studentsExcluded ->
+                                viewModel.addEvent(title, description, date, startTime, endTime, posHours, negHours, mandatory, targetWings, mandatoryWings, studentsExcluded)
                                 showAddEventDialog = false
                             }
                         )
@@ -82,22 +82,53 @@ fun EventListScreen(
 fun EventItem(event: Event, onClick: () -> Unit) {
     val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
     Card(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onClick() },
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).clickable { onClick() },
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text(text = event.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(text = event.title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = "Description: ${event.description}", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = "Date: ${dateFormat.format(Date(event.date))}", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Status Box
+                Surface(
+                    color = if (event.status == "ACTIVE") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = event.status,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (event.status == "ACTIVE") MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+
                 if (event.mandatory) {
-                    Text(text = "Mandatory", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Text(
+                            text = "MANDATORY",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
-            Text(text = "Type: ${event.type}", style = MaterialTheme.typography.bodyMedium)
-            Text(text = "Date: ${dateFormat.format(Date(event.date))}", style = MaterialTheme.typography.bodySmall)
-            
-            // Show status in list too
-            Text(text = "Status: ${event.status}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
-
-

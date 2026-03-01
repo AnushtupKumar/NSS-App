@@ -57,8 +57,13 @@ class StudentRepositoryImpl @Inject constructor(
     override suspend fun markAttendance(eventId: String, studentId: String): Result<Unit> {
         return try {
             val eventRef = firestore.collection("events").document(eventId)
-            if (!eventRef.get().await().exists()) {
+            val eventDoc = eventRef.get().await()
+            if (!eventDoc.exists()) {
                 return Result.failure(Exception("Event not found"))
+            }
+            val event = eventDoc.toObject(Event::class.java)
+            if (event?.status != "ACTIVE") {
+               return Result.failure(Exception("Event is not currently active"))
             }
 
             // Check if already present to avoid overwrites
