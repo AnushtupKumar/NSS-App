@@ -30,12 +30,12 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    fun signup(email: String, pass: String, roll: String) {
+    fun signup(name: String, email: String, pass: String, roll: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            val result = repository.signup(email, pass, roll)
+            val result = repository.signup(name, email, pass, roll)
             if (result.isSuccess) {
-                 _authState.value = AuthState.SuccessStudent // Signup successful, treat as logged in student
+                 _authState.value = AuthState.RequiresVerification // Instruct UI to show verification message
             } else {
                  _authState.value = AuthState.Error(result.exceptionOrNull()?.message ?: "Signup Failed")
             }
@@ -69,5 +69,6 @@ sealed class AuthState {
     object Loading : AuthState()
     object SuccessAdmin : AuthState()
     object SuccessStudent : AuthState()
+    object RequiresVerification : AuthState()
     data class Error(val message: String) : AuthState()
 }

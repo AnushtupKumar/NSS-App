@@ -41,7 +41,16 @@ fun RootNavigation() {
 
     NavHost(navController = navController, startDestination = "login") {
         composable("login") {
-            LoginScreen(viewModel = authViewModel)
+            LoginScreen(
+                viewModel = authViewModel,
+                onNavigateToSignup = { navController.navigate("student_signup") }
+            )
+        }
+        composable("student_signup") {
+            com.example.nssapp.feature.auth.presentation.StudentSignupScreen(
+                viewModel = authViewModel,
+                onNavigateToLogin = { navController.popBackStack() }
+            )
         }
         composable("admin_home") {
             AdminHomeScreen(

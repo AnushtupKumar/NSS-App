@@ -49,6 +49,10 @@ class AuthRepositoryImpl @Inject constructor(
             
             val authResult = try {
                 auth.signInWithEmailAndPassword(email, pass).await()
+                if (auth.currentUser?.isEmailVerified == false) {
+                    auth.signOut()
+                    return Result.failure(Exception("Please verify your email address before logging in."))
+                }
                 Result.success(Unit)
             } catch (e: Exception) {
                 // Check if it's a "User Not Found" scenario but valid student credentials exist
@@ -106,56 +110,44 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
 
-    override suspend fun signup(email: String, pass: String, roll: String): Result<Unit> {
+    override suspend fun signup(name: String, email: String, pass: String, roll: String): Result<Unit> {
         return try {
-            // 1. Check if student exists in Firestore with matching Roll and Password
-            val query = firestore.collection("students")
-                .whereEqualTo("roll", roll)
-                .whereEqualTo("email", email)
-                .limit(1)
-                .get()
-                .await()
-
-            if (query.isEmpty) {
-                return Result.failure(Exception("Student record not found. Ask Admin to add you."))
+            if (!email.endsWith("@gmail.com")) {
+                return Result.failure(Exception("Only @gmail.com emails are allowed for registration"))
             }
 
-            val document = query.documents.first()
-            val storedPassword = document.getString("password")
-
-            if (storedPassword != pass) {
-                return Result.failure(Exception("Invalid Password. Use the one provided by Admin."))
-            }
-
-            // 2. Create Firebase Auth User
-            try {
+            // 1. Create Firebase Auth User
+            val authResult = try {
                 auth.createUserWithEmailAndPassword(email, pass).await()
             } catch (e: Exception) {
-                // If user already exists in Auth but maybe just logging in via signup flow? 
-                // Or maybe clean up? For now return failure.
                 return Result.failure(Exception("Account creation failed: ${e.message}"))
             }
 
-            // 3. Update Firestore Document ID to match Auth UID (Crucial for Role Check)
-            val newUid = auth.currentUser?.uid ?: return Result.failure(Exception("Auth logic error"))
+            val newUid = authResult.user?.uid ?: return Result.failure(Exception("Auth logic error"))
+
+            // 2. Send Verification Email
+            try {
+                authResult.user?.sendEmailVerification()?.await()
+            } catch (e: Exception) {
+                // Keep going even if email fails to send, though it's not ideal
+            }
+
+            // 3. Create Student in Firestore
+            val studentData = mapOf(
+                "id" to newUid,
+                "name" to name,
+                "email" to email,
+                "roll" to roll,
+                "password" to pass,
+                "primaryWing" to "",
+                "enrolledWings" to emptyList<String>(),
+                "eventsAttended" to emptyList<String>()
+            )
             
-            // We need to move the document to the new ID or update the existing one?
-            // Existing logic relies on Document ID == UID.
-            // So we must COPY the data to a new document with ID = UID and DELETE the old one (which had auto-ID).
-            
-            val oldDocRef = document.reference
-            val newDocRef = firestore.collection("students").document(newUid)
-            
-            firestore.runTransaction { transaction ->
-                val snapshot = transaction.get(oldDocRef)
-                val data = snapshot.data ?: return@runTransaction
-                // Update ID in data if consistent
-                val newData = data.toMutableMap()
-                newData["id"] = newUid
-                
-                transaction.set(newDocRef, newData)
-                transaction.delete(oldDocRef)
-            }.await()
+            firestore.collection("students").document(newUid).set(studentData).await()
+
+            // Sign out immediately so they must login after verifying email
+            auth.signOut()
 
             Result.success(Unit)
         } catch (e: Exception) {
