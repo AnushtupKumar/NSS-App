@@ -11,7 +11,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 
 @Composable
 fun LoginScreen(
-    viewModel: AuthViewModel = hiltViewModel()
+    viewModel: AuthViewModel = hiltViewModel(),
+    onNavigateToSignup: () -> Unit = {}
 ) {
     val authState by viewModel.authState.collectAsState()
     
@@ -26,7 +27,7 @@ fun LoginScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "NSS Admin Portal",
+            text = "NSS Login Portal",
             style = MaterialTheme.typography.headlineLarge,
             color = MaterialTheme.colorScheme.primary
         )
@@ -64,10 +65,16 @@ fun LoginScreen(
                 Text("Login")
             }
             Spacer(modifier = Modifier.height(8.dp))
+            TextButton(onClick = onNavigateToSignup) {
+                Text("New Student? Sign Up")
+            }
+        }
+        
+        if (authState is AuthState.RequiresVerification) {
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
-                "Students: Login with credentials provided by Admin",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.secondary
+                text = "Registration successful! Please check your email to verify your account before logging in.",
+                color = MaterialTheme.colorScheme.primary
             )
         }
         
