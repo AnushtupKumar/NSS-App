@@ -1,26 +1,32 @@
 package com.example.nssapp.feature.student.presentation
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.nssapp.core.domain.model.Event
+import java.text.DateFormatSymbols
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,22 +39,41 @@ fun StudentHomeScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("NSS Attendance") },
+            TopAppBar(
+                title = { 
+                    Column {
+                        Text("My Dashboard", style = MaterialTheme.typography.titleLarge)
+                        if (uiState is StudentHomeUiState.Success) {
+                            Text(
+                                (uiState as StudentHomeUiState.Success).student.name, 
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
                 actions = {
                     IconButton(onClick = onProfileClick) {
                         Icon(Icons.Default.Person, contentDescription = "Profile")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onScanClick) {
+            FloatingActionButton(
+                onClick = onScanClick,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = RoundedCornerShape(16.dp)
+            ) {
                 Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan QR")
             }
         }
     ) { padding ->
-        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+        Box(modifier = Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             when (val state = uiState) {
                 is StudentHomeUiState.Loading -> {
                      Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -61,32 +86,72 @@ fun StudentHomeScreen(
                     }
                 }
                 is StudentHomeUiState.Success -> {
-                    // Header with Stats
-                    StatsHeader(state.student.name, state.attendancePercentage, state.totalHours)
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Text(
-                        text = "Upcoming Events",
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    
-                    LazyColumn(contentPadding = PaddingValues(16.dp)) {
-                        items(state.events.filter { it.date >= System.currentTimeMillis() }) { event ->
-                            StudentEventItem(event, isAttended = state.attendedEventIds.contains(event.id))
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Header Stats
+                        DashboardStats(state.totalHours, state.attendancePercentage)
+                        
+                        // Event Calendar
+                        var selectedDate by remember { mutableStateOf<java.time.LocalDate?>(null) }
+                        
+                        com.example.nssapp.feature.student.presentation.components.EventCalendar(
+                            events = state.allEvents,
+                            selectedDate = selectedDate,
+                            onDateSelected = { date ->
+                                selectedDate = if (selectedDate == date) null else date
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                        )
+
+                        // Category Tabs
+                        CategoryFilterChips(
+                            selectedCategory = state.selectedCategory,
+                            onCategorySelected = { viewModel.setCategory(it) }
+                        )
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        val eventsToShow = remember(state.filteredEvents, selectedDate) {
+                            if (selectedDate == null) {
+                                state.filteredEvents
+                            } else {
+                                state.filteredEvents.filter {
+                                    java.time.Instant.ofEpochMilli(it.date)
+                                        .atZone(java.time.ZoneId.systemDefault())
+                                        .toLocalDate() == selectedDate
+                                }
+                            }
                         }
                         
-                        item {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Past Events",
-                                style = MaterialTheme.typography.titleLarge,
-                            )
-                        }
-
-                         items(state.events.filter { it.date < System.currentTimeMillis() }.sortedByDescending { it.date }) { event ->
-                            StudentEventItem(event, isAttended = state.attendedEventIds.contains(event.id))
+                        if (eventsToShow.isEmpty()) {
+                            EmptyState()
+                        } else {
+                            LazyColumn(
+                                contentPadding = PaddingValues(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(eventsToShow, key = { it.id }) { event ->
+                                    val isAttended = state.attendedEventIds.contains(event.id)
+                                    val isPassed = event.date < System.currentTimeMillis()
+                                    
+                                    // A student is penalized ONLY if the event passed, penalty applied, it's mandatory for them, 
+                                    // they are NOT in the attended list, and they are NOT excluded.
+                                    val isMandatoryForStudent = event.mandatoryWings.isEmpty() || event.mandatoryWings.any { it in state.student.enrolledWings }
+                                    val isPenalized = isPassed && event.mandatory && isMandatoryForStudent && event.isPenaltyApplied && 
+                                                      !isAttended && !event.studentsExcluded.contains(state.student.roll)
+                                    
+                                    // A student is missed/absent if the event passed, they didn't attend, it was targeted for them,
+                                    // and they are NOT already categorized as penalized.
+                                    val isTargetedForStudent = event.targetWings.isEmpty() || event.targetWings.any { it in state.student.enrolledWings }
+                                    val isAbsent = isPassed && !isAttended && isTargetedForStudent && !isPenalized
+                                    
+                                    StudentEventItem(
+                                        event = event,
+                                        isAttended = isAttended,
+                                        isAbsent = isAbsent,
+                                        isPenalized = isPenalized
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -96,40 +161,92 @@ fun StudentHomeScreen(
 }
 
 @Composable
-fun StatsHeader(name: String, percentage: Float, totalHours: Double) {
-    Surface(
-        color = MaterialTheme.colorScheme.primaryContainer,
+fun DashboardStats(totalHours: Double, percentage: Float) {
+    Card(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
-        shape = MaterialTheme.shapes.medium
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
-        Row(
-            modifier = Modifier.padding(24.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        Box(
+            modifier = Modifier
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary,
+                            MaterialTheme.colorScheme.tertiary
+                        )
+                    )
+                )
+                .padding(24.dp)
         ) {
-            Column {
-                Text("Welcome,", style = MaterialTheme.typography.titleMedium)
-                Text(name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Total Hours: $totalHours",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        "Total NSS Hours",
+                        color = Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Text(
+                        String.format("%.1f", totalHours),
+                        color = Color.White,
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                Surface(
+                    color = Color.White.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            "Attendance",
+                            color = Color.White.copy(alpha = 0.8f),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                        Text(
+                            "${percentage.toInt()}%",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
-            
-            Box(contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(
-                    progress = { percentage / 100f },
-                    modifier = Modifier.size(80.dp),
-                    strokeWidth = 8.dp,
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
+        }
+    }
+}
+
+@Composable
+fun MonthSelector(selectedMonth: Int, onMonthSelected: (Int) -> Unit) {
+    val months = DateFormatSymbols().months.filter { it.isNotEmpty() }
+    val calendar = Calendar.getInstance()
+    
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(months.indices.toList()) { index ->
+            val isSelected = index == selectedMonth
+            Surface(
+                modifier = Modifier.clickable { onMonthSelected(index) },
+                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(12.dp),
+                border = if (isSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
                 Text(
-                    text = "${percentage.toInt()}%",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    text = months[index].take(3),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -137,39 +254,172 @@ fun StatsHeader(name: String, percentage: Float, totalHours: Double) {
 }
 
 @Composable
-fun StudentEventItem(event: Event, isAttended: Boolean) {
-    val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+fun CategoryFilterChips(selectedCategory: EventCategory, onCategorySelected: (EventCategory) -> Unit) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = event.title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-                if (isAttended) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = "Attended", tint = Color(0xFF10B981), modifier = Modifier.size(28.dp))
-                }
+        items(EventCategory.entries.toTypedArray()) { category ->
+            val isSelected = category == selectedCategory
+            FilterChip(
+                selected = isSelected,
+                onClick = { onCategorySelected(category) },
+                label = { Text(category.name.lowercase()
+                    .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }) },
+                leadingIcon = if (isSelected) {
+                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                } else null,
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary
+                )
+            )
+        }
+    }
+}
+
+@Composable
+fun StudentEventItem(event: Event, isAttended: Boolean, isAbsent: Boolean, isPenalized: Boolean) {
+    val dateFormat = SimpleDateFormat("dd MMM", Locale.getDefault())
+    val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Date Column
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = dateFormat.format(Date(event.date)).split(" ")[0],
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = dateFormat.format(Date(event.date)).split(" ")[1],
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(text = "Type: ${event.description}", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(text = "Date: ${dateFormat.format(Date(event.date))}", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            
-            if (event.mandatory) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    shape = MaterialTheme.shapes.small
-                ) {
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            // Details
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = event.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Schedule, 
+                        contentDescription = null, 
+                        modifier = Modifier.size(12.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "MANDATORY",
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        text = timeFormat.format(Date(event.startTime)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Badges
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (isAttended) {
+                        StatusBadge("Attended", Color(0xFF10B981))
+                        HoursBadge("+${event.positiveHours}", Color(0xFF10B981))
+                    } else if (isPenalized) {
+                        StatusBadge("Penalized", MaterialTheme.colorScheme.error)
+                        HoursBadge("-${event.negativeHours}", MaterialTheme.colorScheme.error)
+                    } else if (isAbsent) {
+                        StatusBadge("Missed", Color.Gray)
+                    } else if (event.date >= System.currentTimeMillis()) {
+                        StatusBadge("Upcoming", MaterialTheme.colorScheme.secondary)
+                    }
+                    
+                    if (event.mandatory) {
+                        StatusBadge("Mandatory", MaterialTheme.colorScheme.tertiary)
+                    }
+                }
+            }
+
+            if (isAttended) {
+                Icon(
+                    Icons.Default.Verified, 
+                    contentDescription = "Verified", 
+                    tint = Color(0xFF10B981),
+                    modifier = Modifier.size(32.dp)
+                )
             }
         }
+    }
+}
+
+@Composable
+fun StatusBadge(text: String, color: Color) {
+    Surface(
+        color = color.copy(alpha = 0.1f),
+        shape = CircleShape,
+        border = BorderStroke(1.dp, color.copy(alpha = 0.2f))
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+fun HoursBadge(text: String, color: Color) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = color,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 4.dp)
+    )
+}
+
+@Composable
+fun EmptyState() {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            Icons.Default.EventBusy, 
+            contentDescription = null, 
+            modifier = Modifier.size(64.dp),
+            tint = MaterialTheme.colorScheme.outline
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "No events found for this selection",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

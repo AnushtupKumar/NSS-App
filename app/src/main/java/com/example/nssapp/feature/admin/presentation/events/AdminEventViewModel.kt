@@ -32,7 +32,7 @@ class AdminEventViewModel @Inject constructor(
         viewModelScope.launch {
             combine(
                 repository.getEvents(),
-                repository.getWings()
+                repository.getAllWings() // Fetch all wings to include deleted ones in forms
             ) { events, wings ->
                 EventUiState.Success(events, wings)
             }.catch { e ->

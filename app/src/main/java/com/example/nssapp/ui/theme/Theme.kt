@@ -13,12 +13,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = PrimaryLight,
+    primary = PrimaryLight, // PrimaryLight looks better on dark
     secondary = SecondaryLight,
     tertiary = PrimaryBlue,
     background = BackgroundDark,
     surface = SurfaceDark,
-    onPrimary = BackgroundDark,
+    surfaceVariant = SurfaceDarkVariant,
+    onPrimary = Color.White,
     onSecondary = BackgroundDark,
     onBackground = TextPrimaryDark,
     onSurface = TextPrimaryDark,
@@ -31,6 +32,7 @@ private val LightColorScheme = lightColorScheme(
     tertiary = PrimaryDark,
     background = BackgroundLight,
     surface = SurfaceLight,
+    surfaceVariant = Color(0xFFF8FAFC),
     onPrimary = Color.White,
     onSecondary = Color.White,
     onBackground = TextPrimaryLight,
@@ -58,6 +60,7 @@ fun NSSAppTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
+        shapes = Shapes, // Added custom shapes
         content = content
     )
 }

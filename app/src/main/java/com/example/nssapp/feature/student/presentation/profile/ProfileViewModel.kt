@@ -8,10 +8,12 @@ import com.example.nssapp.feature.admin.domain.repository.AdminRepository
 import com.example.nssapp.feature.auth.domain.repository.AuthRepository
 import com.example.nssapp.feature.student.domain.repository.StudentRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.singleOrNull
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -54,11 +56,11 @@ class ProfileViewModel @Inject constructor(
                 
                 val wings = adminRepository.getWings().firstOrNull() ?: emptyList()
                 val wingNames = wings.filter { student.enrolledWings.contains(it.id) }.joinToString(", ") { it.name }
-                val displayWing = if (wingNames.isNotEmpty()) wingNames else "No Wings Enrolled"
+                val displayWing = wingNames.ifEmpty { "No Wings Enrolled" }
 
                 // Fetch Stats again? Or pass them? Ideally fetch ensuring freshness.
                 val attendedEventsResult = studentRepository.getAttendedEvents(currentUser.uid)
-                val attendedCount = attendedEventsResult.getOrNull()?.size ?: 0
+                val attendedCount = attendedEventsResult.singleOrNull()?.size ?: 0
                 
                 _uiState.value = ProfileUiState.Success(
                     student = student,

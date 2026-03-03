@@ -191,7 +191,22 @@ class AdminRepositoryImpl @Inject constructor(
 
     override suspend fun deleteEvent(eventId: String): Result<Unit> {
         return try {
-            firestore.collection("events").document(eventId).delete().await()
+            val eventRef = firestore.collection("events").document(eventId)
+            
+            // Fetch all attendance records for this event
+            val attendanceSnapshot = eventRef.collection("attendance").get().await()
+            
+            val batch = firestore.batch()
+            
+            // Delete each attendance document
+            for (doc in attendanceSnapshot.documents) {
+                batch.delete(doc.reference)
+            }
+            
+            // Finally delete the event document itself
+            batch.delete(eventRef)
+            
+            batch.commit().await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

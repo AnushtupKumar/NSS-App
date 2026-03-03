@@ -6,6 +6,7 @@ import com.example.nssapp.feature.student.domain.repository.StudentRepository
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.snapshots
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -28,32 +29,28 @@ class StudentRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun getEventsForWings(wingIds: List<String>): Flow<List<Event>> {
-        if (wingIds.isEmpty()) {
-            return kotlinx.coroutines.flow.flowOf(emptyList())
-        }
+    override fun getAllEvents(): Flow<List<Event>> {
         return firestore.collection("events")
-            .whereArrayContainsAny("targetWings", wingIds)
             .snapshots()
-            .map { it.toObjects(Event::class.java) }
+            .map { snapshot -> 
+                snapshot.documents.mapNotNull { doc ->
+                    doc.toObject(Event::class.java)?.copy(id = doc.id)
+                }
+            }
+            .catch { emit(emptyList()) }
     }
 
-    override suspend fun getAttendedEvents(studentId: String): Result<List<String>> {
-        return try {
-            val snapshot = firestore.collectionGroup("attendance")
-                .whereEqualTo("status", "Present")
-                .whereEqualTo("studentId", studentId) 
-                .get()
-                .await()
-                
-            val eventIds = snapshot.documents.mapNotNull { doc ->
-                doc.reference.parent.parent?.id
+    override fun getAttendedEvents(studentId: String): Flow<List<String>> {
+        return firestore.collectionGroup("attendance")
+            .whereEqualTo("studentId", studentId)
+            .whereEqualTo("status", "Present")
+            .snapshots()
+            .map { snapshot ->
+                snapshot.documents.mapNotNull { doc ->
+                    doc.reference.parent.parent?.id
+                }
             }
-            
-            Result.success(eventIds)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+            .catch { emit(emptyList()) }
     }
 
     override suspend fun markAttendance(eventId: String, studentId: String): Result<Unit> {
@@ -63,9 +60,22 @@ class StudentRepositoryImpl @Inject constructor(
             if (!eventDoc.exists()) {
                 return Result.failure(Exception("Event not found"))
             }
-            val event = eventDoc.toObject(Event::class.java)
-            if (event?.status != "ACTIVE") {
+            val event = eventDoc.toObject(Event::class.java) ?: return Result.failure(Exception("Event data error"))
+            
+            if (event.status != "ACTIVE") {
                return Result.failure(Exception("Event is not currently active"))
+            }
+
+            // Check if student belongs to an ACTIVE wing that is targeted
+            val studentProfile = getStudentProfile(studentId).getOrThrow()
+            val allWings = getAllWingsList()
+            val activeWings = allWings.filter { !it.isDeleted }.map { it.id }
+            
+            val hasActiveTargetedWing = event.targetWings.isEmpty() || 
+                event.targetWings.any { it in studentProfile.enrolledWings && it in activeWings }
+            
+            if (!hasActiveTargetedWing) {
+                return Result.failure(Exception("You do not belong to an active wing targeted for this event"))
             }
 
             // Check if already present to avoid overwrites
@@ -86,6 +96,17 @@ class StudentRepositoryImpl @Inject constructor(
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    override suspend fun getAllWingsList(): List<com.example.nssapp.core.domain.model.Wing> {
+        return try {
+            val snapshot = firestore.collection("wings").get().await()
+            snapshot.documents.mapNotNull { doc ->
+                doc.toObject(com.example.nssapp.core.domain.model.Wing::class.java)?.copy(id = doc.id)
+            }
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 

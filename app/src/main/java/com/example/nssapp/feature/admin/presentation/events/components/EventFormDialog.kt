@@ -28,6 +28,14 @@ fun EventFormDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, String, Long, Long, Long, Double, Double, Boolean, List<String>, List<String>, List<String>) -> Unit
 ) {
+    val visibleWings = remember(wings, initialEvent) {
+        wings.filter { wing ->
+            !wing.isDeleted || 
+            initialEvent?.targetWings?.contains(wing.id) == true || 
+            initialEvent?.mandatoryWings?.contains(wing.id) == true
+        }
+    }
+
     var title by remember { mutableStateOf(initialEvent?.title ?: "") }
     var description by remember { mutableStateOf(initialEvent?.description ?: "") }
     var dateParams by remember { mutableStateOf(initialEvent?.date ?: System.currentTimeMillis()) }
@@ -118,6 +126,7 @@ fun EventFormDialog(
     }
 
     AlertDialog(
+        modifier = Modifier.fillMaxWidth(1f),
         onDismissRequest = onDismiss,
         title = { Text(if (initialEvent != null) "Edit Event" else "Create Event") },
         text = {
@@ -156,17 +165,16 @@ fun EventFormDialog(
                 }
 
                 item {
-                    Text("Target Audience", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                     Text("Select wings that can attend this event:", style = MaterialTheme.typography.bodySmall)
                     
-                    val allTargetSelected = wings.isNotEmpty() && selectedTargetWings.size == wings.size
+                    val allTargetSelected = visibleWings.isNotEmpty() && selectedTargetWings.size == visibleWings.size
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
                             checked = allTargetSelected,
                             onCheckedChange = { checked ->
                                 selectedTargetWings.clear()
                                 if (checked) {
-                                    selectedTargetWings.addAll(wings.map { it.id })
+                                    selectedTargetWings.addAll(visibleWings.map { it.id })
                                 } else {
                                     selectedMandatoryWings.clear()
                                 }
@@ -175,16 +183,23 @@ fun EventFormDialog(
                         Text("All Wings", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
                     }
 
-                    wings.forEach { wing ->
+                    visibleWings.forEach { wing ->
+                        val isInitiallySelected = initialEvent?.targetWings?.contains(wing.id) == true
+                        val isDeleted = wing.isDeleted
+
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
                                 checked = selectedTargetWings.contains(wing.id),
                                 onCheckedChange = { checked ->
+                                    // Prevent deselecting a deleted wing that was already there
+                                    if (!checked && isDeleted && isInitiallySelected) return@Checkbox
+
                                     if (checked) selectedTargetWings.add(wing.id) else {
                                         selectedTargetWings.remove(wing.id)
-                                        selectedMandatoryWings.remove(wing.id) // Also remove from mandatory
+                                        selectedMandatoryWings.remove(wing.id)
                                     }
-                                }
+                                },
+                                enabled = !(isDeleted && isInitiallySelected) // Visual hint: Cannot deselect history
                             )
                             Text(
                                 text = if (wing.isDeleted) "${wing.name} (Deleted)" else wing.name,
@@ -237,7 +252,7 @@ fun EventFormDialog(
                         Text("Mandatory For (Specific Wings):", style = MaterialTheme.typography.titleSmall)
                         Text("Only select if the penalty should be limited to specific wings. If empty, all targeted wings are mandatory.", style = MaterialTheme.typography.bodySmall)
                         
-                        val availableOptions = wings.filter { selectedTargetWings.contains(it.id) }
+                        val availableOptions = visibleWings.filter { selectedTargetWings.contains(it.id) }
                         if (availableOptions.isEmpty()) {
                             Text("Please select Target Wings first.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         } else {
@@ -256,16 +271,22 @@ fun EventFormDialog(
                             }
 
                             availableOptions.forEach { wing ->
+                                 val isInitiallyMandatory = initialEvent?.mandatoryWings?.contains(wing.id) == true
+                                 val isDeleted = wing.isDeleted
+
                                  Row(verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(
                                         checked = selectedMandatoryWings.contains(wing.id),
                                         onCheckedChange = { checked ->
+                                            if (!checked && isDeleted && isInitiallyMandatory) return@Checkbox
+
                                             if (checked) {
                                                 selectedMandatoryWings.add(wing.id)
                                             } else {
                                                 selectedMandatoryWings.remove(wing.id)
                                             }
-                                        }
+                                        },
+                                        enabled = !(isDeleted && isInitiallyMandatory)
                                     )
                                     Text(
                                         text = if (wing.isDeleted) "${wing.name} (Deleted)" else wing.name,
