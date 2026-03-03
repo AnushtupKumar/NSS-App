@@ -17,4 +17,5 @@ interface AttendanceRepository {
     ): Result<List<String>>
 
     suspend fun applyPenaltyForEvent(eventId: String): Result<Int>
+    suspend fun clearEventPenalties(eventId: String): Result<Unit>
 }

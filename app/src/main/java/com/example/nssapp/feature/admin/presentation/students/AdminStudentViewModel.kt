@@ -2,6 +2,7 @@ package com.example.nssapp.feature.admin.presentation.students
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.nssapp.core.domain.model.Admin
 import com.example.nssapp.core.domain.model.Student
 import com.example.nssapp.core.domain.model.Wing
 import com.example.nssapp.feature.admin.domain.repository.AdminRepository
@@ -29,13 +30,14 @@ class AdminStudentViewModel @Inject constructor(
         loadData()
     }
 
-    private fun loadData() {
+    fun loadData() {
         viewModelScope.launch {
             combine(
                 repository.getWings(),
                 repository.getStudents(null), // Initially get all, filtering locally or re-fetching could be better but let's filter locally for small datasets
+                repository.getAdmins(),
                 _selectedWings
-            ) { wings, students, selectedWingIds ->
+            ) { wings, students, admins, selectedWingIds ->
                 val filteredStudents = if (selectedWingIds.isEmpty()) {
                     students
                 } else {
@@ -45,7 +47,7 @@ class AdminStudentViewModel @Inject constructor(
                         student.enrolledWings.any { it in selectedWingIds }
                     }
                 }
-                StudentUiState.Success(wings, filteredStudents)
+                StudentUiState.Success(wings, filteredStudents, admins)
             }.catch { e ->
                 _uiState.value = StudentUiState.Error(e.message ?: "Unknown Error")
             }.collect { state ->
@@ -88,16 +90,16 @@ class AdminStudentViewModel @Inject constructor(
         }
     }
     
-    fun addWing(name: String) {
+    fun addWing(name: String, adminIds: List<String>) {
         viewModelScope.launch {
             val wing = Wing(name = name)
-            repository.createWing(wing)
+            repository.createWing(wing, adminIds)
         }
     }
 }
 
 sealed class StudentUiState {
     object Loading : StudentUiState()
-    data class Success(val wings: List<Wing>, val students: List<Student>) : StudentUiState()
+    data class Success(val wings: List<Wing>, val students: List<Student>, val admins: List<Admin> = emptyList()) : StudentUiState()
     data class Error(val message: String) : StudentUiState()
 }

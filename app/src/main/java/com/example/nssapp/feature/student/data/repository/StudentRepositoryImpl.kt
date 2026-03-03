@@ -28,10 +28,12 @@ class StudentRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun getEventsForWing(wingId: String): Flow<List<Event>> {
-        // Query events where targetWings contains wingId
+    override fun getEventsForWings(wingIds: List<String>): Flow<List<Event>> {
+        if (wingIds.isEmpty()) {
+            return kotlinx.coroutines.flow.flowOf(emptyList())
+        }
         return firestore.collection("events")
-            .whereArrayContains("targetWings", wingId)
+            .whereArrayContainsAny("targetWings", wingIds)
             .snapshots()
             .map { it.toObjects(Event::class.java) }
     }
@@ -57,8 +59,13 @@ class StudentRepositoryImpl @Inject constructor(
     override suspend fun markAttendance(eventId: String, studentId: String): Result<Unit> {
         return try {
             val eventRef = firestore.collection("events").document(eventId)
-            if (!eventRef.get().await().exists()) {
+            val eventDoc = eventRef.get().await()
+            if (!eventDoc.exists()) {
                 return Result.failure(Exception("Event not found"))
+            }
+            val event = eventDoc.toObject(Event::class.java)
+            if (event?.status != "ACTIVE") {
+               return Result.failure(Exception("Event is not currently active"))
             }
 
             // Check if already present to avoid overwrites

@@ -30,12 +30,9 @@ class AttendanceViewModel @Inject constructor(
 
     private fun loadEvents() {
         viewModelScope.launch {
-            // For MVP, just get all events. In real world, filter "Today's events" locally.
-            // A better query would be "Where date > yesterday and date < tomorrow"
+            // Get events starting from yesterday to allow some overlap
+            val oneDayAgo = System.currentTimeMillis() - 86400000
             adminRepository.getEvents().collect { events ->
-                // Filter events that are roughly "today" or allow all for demo
-                // Let's filter events date >= Today - 1 day
-                val oneDayAgo = System.currentTimeMillis() - 86400000
                 _activeEvents.value = events.filter { it.date > oneDayAgo }
             }
         }

@@ -9,12 +9,14 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.nssapp.core.domain.model.Admin
 import com.example.nssapp.core.domain.model.Student
 import com.example.nssapp.core.domain.model.Wing
 import com.example.nssapp.feature.admin.presentation.students.components.StudentFormDialog
@@ -39,12 +41,7 @@ fun StudentListScreen(
         },
         topBar = {
             TopAppBar(
-                title = { Text("Manage Students") },
-                actions = {
-                    TextButton(onClick = { showAddWingDialog = true }) {
-                        Text("Add Wing")
-                    }
-                }
+                title = { Text("Manage Students") }
             )
         }
     ) { padding ->
@@ -57,7 +54,15 @@ fun StudentListScreen(
                 }
                 is StudentUiState.Error -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = state.message, color = MaterialTheme.colorScheme.error)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(androidx.compose.material.icons.Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.height(8.dp))
+                            Text(text = state.message, color = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.height(16.dp))
+                            Button(onClick = { viewModel.loadData() }) {
+                                Text("Retry")
+                            }
+                        }
                     }
                 }
                 is StudentUiState.Success -> {
@@ -71,13 +76,25 @@ fun StudentListScreen(
                     
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    LazyColumn {
-                        items(state.students) { student ->
-                            StudentItem(
-                                student = student,
-                                onDelete = { viewModel.deleteStudent(student.id) },
-                                onEdit = { editingStudent = student }
-                            )
+                    if (state.students.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.secondary)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("No students found", style = MaterialTheme.typography.titleMedium)
+                                Text("Tap '+' to register a new student!", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    } else {
+                        LazyColumn {
+                            items(state.students) { student ->
+                                 StudentItem(
+                                    student = student,
+                                    wings = state.wings,
+                                    onDelete = { viewModel.deleteStudent(student.id) },
+                                    onEdit = { editingStudent = student }
+                                )
+                            }
                         }
                     }
                     
@@ -103,16 +120,6 @@ fun StudentListScreen(
                                 }
                                 showAddStudentDialog = false
                                 editingStudent = null
-                            }
-                        )
-                    }
-                    
-                    if (showAddWingDialog) {
-                        AddWingDialog(
-                            onDismiss = { showAddWingDialog = false },
-                            onConfirm = { name ->
-                                viewModel.addWing(name)
-                                showAddWingDialog = false
                             }
                         )
                     }
@@ -148,12 +155,14 @@ fun WingFilterRow(
     }
 }
 
-@Composable
+ @Composable
 fun StudentItem(
     student: Student,
+    wings: List<Wing>,
     onDelete: () -> Unit,
     onEdit: () -> Unit
 ) {
+    val studentWings = wings.filter { student.enrolledWings.contains(it.id) }.joinToString(", ") { it.name }
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
     ) {
@@ -164,7 +173,8 @@ fun StudentItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = student.name, style = MaterialTheme.typography.titleMedium)
-                Text(text = "Roll: ${student.roll}", style = MaterialTheme.typography.bodyMedium)
+                 Text(text = "Roll: ${student.roll}", style = MaterialTheme.typography.bodyMedium)
+                Text(text = "Wings: ${studentWings.ifEmpty { "None" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 Text(text = student.email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (student.password.isNotEmpty()) {
                     Text(text = "Pass: ${student.password}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -184,25 +194,4 @@ fun StudentItem(
 
 
 
-@Composable
-fun AddWingDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
-) {
-    var name by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add Wing") },
-        text = {
-            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Wing Name") })
-        },
-        confirmButton = {
-            Button(onClick = { if (name.isNotBlank()) onConfirm(name) }) {
-                Text("Add")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
-}
+

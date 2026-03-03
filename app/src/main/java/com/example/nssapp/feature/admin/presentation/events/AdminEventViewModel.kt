@@ -28,7 +28,7 @@ class AdminEventViewModel @Inject constructor(
         loadData()
     }
 
-    private fun loadData() {
+    fun loadData() {
         viewModelScope.launch {
             combine(
                 repository.getEvents(),
@@ -45,7 +45,7 @@ class AdminEventViewModel @Inject constructor(
 
     fun addEvent(
         title: String, 
-        type: String, 
+        description: String, 
         date: Long,
         startTime: Long,
         endTime: Long,
@@ -53,12 +53,13 @@ class AdminEventViewModel @Inject constructor(
         negHours: Double,
         mandatory: Boolean, 
         targetWings: List<String>,
-        mandatoryWings: List<String>
+        mandatoryWings: List<String>,
+        studentsExcluded: List<String>
     ) {
         viewModelScope.launch {
             val event = Event(
                 title = title,
-                type = type,
+                description = description,
                 date = date, // This is just the date part, maybe? Or full timestamp?
                 startTime = startTime,
                 endTime = endTime,
@@ -67,6 +68,7 @@ class AdminEventViewModel @Inject constructor(
                 mandatory = mandatory,
                 targetWings = targetWings,
                 mandatoryWings = mandatoryWings,
+                studentsExcluded = studentsExcluded,
                 createdBy = authRepository.currentUser?.uid ?: "unknown_admin"
             )
             repository.createEvent(event)
