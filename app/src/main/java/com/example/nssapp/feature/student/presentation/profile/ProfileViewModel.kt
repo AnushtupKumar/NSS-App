@@ -26,6 +26,9 @@ class ProfileViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
+    
+    private val _passwordChangeState = MutableStateFlow<PasswordChangeState>(PasswordChangeState.Idle)
+    val passwordChangeState: StateFlow<PasswordChangeState> = _passwordChangeState.asStateFlow()
 
     init {
         loadProfile()
@@ -89,10 +92,33 @@ class ProfileViewModel @Inject constructor(
             // OR: We navigate to Login screen manually.
         }
     }
+
+    fun changePassword(newPassword: String) {
+        viewModelScope.launch {
+            _passwordChangeState.value = PasswordChangeState.Loading
+            val result = authRepository.updatePassword(newPassword)
+            if (result.isSuccess) {
+                _passwordChangeState.value = PasswordChangeState.Success
+            } else {
+                _passwordChangeState.value = PasswordChangeState.Error(result.exceptionOrNull()?.message ?: "Failed to update password")
+            }
+        }
+    }
+
+    fun clearPasswordChangeState() {
+        _passwordChangeState.value = PasswordChangeState.Idle
+    }
 }
 
 sealed class ProfileUiState {
     object Loading : ProfileUiState()
     data class Success(val student: Student, val wingName: String, val attendedCount: Int) : ProfileUiState()
     data class Error(val message: String) : ProfileUiState()
+}
+
+sealed class PasswordChangeState {
+    object Idle : PasswordChangeState()
+    object Loading : PasswordChangeState()
+    object Success : PasswordChangeState()
+    data class Error(val message: String) : PasswordChangeState()
 }

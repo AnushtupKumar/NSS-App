@@ -16,6 +16,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.hilt.navigation.compose.hiltViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -26,6 +33,20 @@ fun StudentProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val passwordChangeState by viewModel.passwordChangeState.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
+    var showChangePasswordDialog by remember { androidx.compose.runtime.mutableStateOf(false) }
+    var newPassword by remember { androidx.compose.runtime.mutableStateOf("") }
+
+    LaunchedEffect(passwordChangeState) {
+        if (passwordChangeState is PasswordChangeState.Success) {
+            android.widget.Toast.makeText(context, "Password changed successfully", android.widget.Toast.LENGTH_SHORT).show()
+            showChangePasswordDialog = false
+            viewModel.clearPasswordChangeState()
+            newPassword = ""
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -83,6 +104,15 @@ fun StudentProfileScreen(
                         Spacer(modifier = Modifier.weight(1f))
                         
                         Button(
+                            onClick = { showChangePasswordDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Change Password")
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        Button(
                             onClick = {
                                 viewModel.logout()
                                 onLogout()
@@ -96,6 +126,68 @@ fun StudentProfileScreen(
                 }
             }
         }
+    }
+
+    if (showChangePasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showChangePasswordDialog = false
+                viewModel.clearPasswordChangeState()
+                newPassword = ""
+            },
+            title = { Text("Change Password") },
+            text = {
+                Column {
+                    Text("Enter your new password.")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newPassword,
+                        onValueChange = { newPassword = it },
+                        label = { Text("New Password") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done
+                        )
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    when (passwordChangeState) {
+                        is PasswordChangeState.Loading -> {
+                            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                        }
+                        is PasswordChangeState.Error -> {
+                            Text(
+                                (passwordChangeState as PasswordChangeState.Error).message,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        else -> {}
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.changePassword(newPassword) },
+                    enabled = newPassword.isNotBlank() && passwordChangeState !is PasswordChangeState.Loading
+                ) {
+                    Text("Change")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showChangePasswordDialog = false
+                    viewModel.clearPasswordChangeState()
+                    newPassword = ""
+                }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

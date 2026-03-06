@@ -18,10 +18,20 @@ class AuthViewModel @Inject constructor(
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    fun login(email: String, roll: String) {
+    private val _passwordResetState = MutableStateFlow<PasswordResetState>(PasswordResetState.Idle)
+    val passwordResetState: StateFlow<PasswordResetState> = _passwordResetState.asStateFlow()
+
+    init {
+        if (repository.currentUser != null) {
+            _authState.value = AuthState.Loading
+            checkUserRole()
+        }
+    }
+
+    fun login(emailOrRoll: String, password: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            val result = repository.login(email, roll)
+            val result = repository.login(emailOrRoll, password)
             if (result.isSuccess) {
                 checkUserRole()
             } else {
@@ -30,16 +40,20 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    fun signup(email: String, pass: String, roll: String) {
+    fun resetPassword(email: String) {
         viewModelScope.launch {
-            _authState.value = AuthState.Loading
-            val result = repository.signup(email, pass, roll)
+            _passwordResetState.value = PasswordResetState.Loading
+            val result = repository.sendPasswordResetEmail(email)
             if (result.isSuccess) {
-                 _authState.value = AuthState.SuccessStudent // Signup successful, treat as logged in student
+                _passwordResetState.value = PasswordResetState.Success
             } else {
-                 _authState.value = AuthState.Error(result.exceptionOrNull()?.message ?: "Signup Failed")
+                _passwordResetState.value = PasswordResetState.Error(result.exceptionOrNull()?.message ?: "Failed to send reset email")
             }
         }
+    }
+    
+    fun clearPasswordResetState() {
+        _passwordResetState.value = PasswordResetState.Idle
     }
 
     private fun checkUserRole() {
@@ -70,4 +84,11 @@ sealed class AuthState {
     object SuccessAdmin : AuthState()
     object SuccessStudent : AuthState()
     data class Error(val message: String) : AuthState()
+}
+
+sealed class PasswordResetState {
+    object Idle : PasswordResetState()
+    object Loading : PasswordResetState()
+    object Success : PasswordResetState()
+    data class Error(val message: String) : PasswordResetState()
 }

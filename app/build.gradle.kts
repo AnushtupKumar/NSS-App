@@ -103,4 +103,9 @@ dependencies {
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
     // CameraX concurrent
     implementation("androidx.concurrent:concurrent-futures-ktx:1.1.0")
+
+    // Room
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 }

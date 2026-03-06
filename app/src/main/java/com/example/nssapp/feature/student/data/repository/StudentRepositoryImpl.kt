@@ -11,11 +11,22 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.example.nssapp.core.data.local.dao.EventDao
+import com.example.nssapp.core.data.local.entity.EventEntity
 
 class StudentRepositoryImpl @Inject constructor(
-    private val firestore: FirebaseFirestore
+    private val firestore: FirebaseFirestore,
+    private val eventDao: EventDao
 ) : StudentRepository {
+
+    private val repositoryScope = CoroutineScope(Dispatchers.IO)
 
     override suspend fun getStudentProfile(studentId: String): Result<Student> {
         return try {
@@ -32,14 +43,21 @@ class StudentRepositoryImpl @Inject constructor(
     }
 
     override fun getAllEvents(): Flow<List<Event>> {
-        return firestore.collection("events")
-            .snapshots()
-            .map { snapshot -> 
-                snapshot.documents.mapNotNull { doc ->
-                    doc.toObject(Event::class.java)?.copy(id = doc.id)
+        // Kick off background sync
+        repositoryScope.launch {
+            firestore.collection("events")
+                .snapshots()
+                .collect { snapshot ->
+                    val events = snapshot.documents.mapNotNull { doc ->
+                        doc.toObject(Event::class.java)?.copy(id = doc.id)
+                    }
+                    val entities = events.map { EventEntity.fromEvent(it) }
+                    eventDao.insertEvents(entities)
                 }
-            }
-            .catch { emit(emptyList()) }
+        }
+        
+        // Yield cached results instantly
+        return eventDao.getAllEvents().map { entities -> entities.map { it.toEvent() } }.catch { emit(emptyList()) }
     }
 
     override fun getAttendedEvents(studentId: String): Flow<List<String>> {

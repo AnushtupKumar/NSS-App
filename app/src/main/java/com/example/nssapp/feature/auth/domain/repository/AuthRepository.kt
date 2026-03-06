@@ -5,8 +5,9 @@ import com.google.firebase.auth.FirebaseUser
 interface AuthRepository {
     val currentUser: FirebaseUser?
     
-    suspend fun login(email: String, roll: String): Result<Unit> // Using Roll No as password initially? Or Email/Password? Plan said Email.
-    suspend fun signup(email: String, pass: String, roll: String): Result<Unit>
+    suspend fun login(emailOrRoll: String, password: String): Result<Unit>
+    suspend fun sendPasswordResetEmail(email: String): Result<Unit>
+    suspend fun updatePassword(newPassword: String): Result<Unit>
     suspend fun logout()
     suspend fun getUserRole(): Result<String> // "admin" or "student"
 }

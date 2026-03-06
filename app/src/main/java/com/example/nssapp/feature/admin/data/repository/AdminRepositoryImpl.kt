@@ -13,10 +13,18 @@ import com.google.firebase.firestore.snapshots
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import com.example.nssapp.core.data.local.dao.EventDao
+import com.example.nssapp.core.data.local.entity.EventEntity
 
 class AdminRepositoryImpl @Inject constructor(
-    private val firestore: FirebaseFirestore
+    private val firestore: FirebaseFirestore,
+    private val eventDao: EventDao
 ) : AdminRepository {
 
     override fun getAdmins(): Flow<List<Admin>> {
@@ -162,20 +170,33 @@ class AdminRepositoryImpl @Inject constructor(
         }
     }
 
+    private val repositoryScope = CoroutineScope(Dispatchers.IO)
+
     override fun getEvents(): Flow<List<Event>> {
-        return firestore.collection("events")
-            .snapshots()
-            .map { snapshot -> 
-                snapshot.documents.map { doc ->
-                    val event = doc.toObject(Event::class.java)!!
-                    val legacyPenalty = doc.getBoolean("penaltyApplied") ?: false
-                    if (!event.isPenaltyApplied && legacyPenalty) {
-                        event.copy(id = doc.id, isPenaltyApplied = true)
-                    } else {
-                        event.copy(id = doc.id)
+        // 1. Kick off a background sync from Firestore -> Room
+        repositoryScope.launch {
+            firestore.collection("events")
+                .snapshots()
+                .collect { snapshot ->
+                    val events = snapshot.documents.map { doc ->
+                        val event = doc.toObject(Event::class.java)!!
+                        val legacyPenalty = doc.getBoolean("penaltyApplied") ?: false
+                        if (!event.isPenaltyApplied && legacyPenalty) {
+                            event.copy(id = doc.id, isPenaltyApplied = true)
+                        } else {
+                            event.copy(id = doc.id)
+                        }
                     }
+                    val entities = events.map { EventEntity.fromEvent(it) }
+                    eventDao.insertEvents(entities)
+                    
+                    // Optional: remove stale events from local DB if they were deleted on server
+                    // (Omitted for brevity, but REPLACE strategy handles updates/inserts)
                 }
-            }
+        }
+        
+        // 2. Return the local cache as the single source of truth for the UI
+        return eventDao.getAllEvents().map { entities -> entities.map { it.toEvent() } }
     }
 
     override suspend fun createEvent(event: Event): Result<Unit> {

@@ -29,6 +29,13 @@ import com.example.nssapp.core.domain.model.EventStatus
 import java.text.DateFormatSymbols
 import java.text.SimpleDateFormat
 import java.util.*
+import android.Manifest
+import android.os.Build
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import com.google.firebase.messaging.FirebaseMessaging
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +45,32 @@ fun StudentHomeScreen(
     viewModel: StudentHomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            Log.d("FCM", "Notification permission granted")
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    LaunchedEffect(uiState) {
+        if (uiState is StudentHomeUiState.Success) {
+            val state = uiState as StudentHomeUiState.Success
+            FirebaseMessaging.getInstance().subscribeToTopic("events_updates")
+            state.student.enrolledWings.forEach { wingId ->
+                val safeTopicName = wingId.replace(Regex("[^a-zA-Z0-9-_.~%]+"), "_")
+                FirebaseMessaging.getInstance().subscribeToTopic("wing_$safeTopicName")
+            }
+        }
+    }
 
     Scaffold(
         topBar = {

@@ -28,8 +28,13 @@ import com.example.nssapp.feature.admin.presentation.events.EventListScreen
 import com.example.nssapp.feature.admin.presentation.profile.AdminProfileScreen
 import com.example.nssapp.feature.admin.presentation.scan.ScanQRScreen
 import com.example.nssapp.feature.admin.presentation.students.StudentListScreen
-
 import com.example.nssapp.feature.admin.presentation.wings.WingManagementScreen
+import android.Manifest
+import android.os.Build
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.firebase.messaging.FirebaseMessaging
 
 sealed class AdminScreen(val route: String, val title: String, val icon: ImageVector) {
     object Events : AdminScreen("admin_events", "Events", Icons.Default.DateRange)
@@ -50,6 +55,21 @@ fun AdminHomeScreen(
         AdminScreen.Wings,
         AdminScreen.Profile
     )
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            Log.d("FCM", "Notification permission granted for Admin")
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        FirebaseMessaging.getInstance().subscribeToTopic("events_updates")
+    }
 
     Scaffold(
         bottomBar = {

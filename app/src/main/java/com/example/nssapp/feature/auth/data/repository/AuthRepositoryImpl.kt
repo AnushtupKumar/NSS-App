@@ -15,7 +15,7 @@ class AuthRepositoryImpl @Inject constructor(
     override val currentUser: FirebaseUser?
         get() = auth.currentUser
 
-    override suspend fun login(emailOrRoll: String, pass: String): Result<Unit> {
+    override suspend fun login(emailOrRoll: String, password: String): Result<Unit> {
         return try {
             val email = if (android.util.Patterns.EMAIL_ADDRESS.matcher(emailOrRoll).matches()) {
                 emailOrRoll
@@ -48,7 +48,7 @@ class AuthRepositoryImpl @Inject constructor(
             }
             
             val authResult = try {
-                auth.signInWithEmailAndPassword(email, pass).await()
+                auth.signInWithEmailAndPassword(email, password).await()
                 Result.success(Unit)
             } catch (e: Exception) {
                 // Check if it's a "User Not Found" scenario but valid student credentials exist
@@ -67,10 +67,10 @@ class AuthRepositoryImpl @Inject constructor(
                     val document = studentQuery.documents.first()
                     val storedPassword = document.getString("password")
                     
-                    if (storedPassword == pass) {
+                    if (storedPassword == password) {
                         // Valid credentials in Firestore, but no Auth User. Create one.
                         try {
-                            auth.createUserWithEmailAndPassword(email, pass).await()
+                            auth.createUserWithEmailAndPassword(email, password).await()
                             
                             // Migrate Data (Update ID)
                             val newUid = auth.currentUser?.uid ?: throw Exception("Auth failed after creation")
@@ -105,58 +105,60 @@ class AuthRepositoryImpl @Inject constructor(
         }
     }
 
-
-    override suspend fun signup(email: String, pass: String, roll: String): Result<Unit> {
+    override suspend fun sendPasswordResetEmail(email: String): Result<Unit> {
         return try {
-            // 1. Check if student exists in Firestore with matching Roll and Password
-            val query = firestore.collection("students")
-                .whereEqualTo("roll", roll)
-                .whereEqualTo("email", email)
+            val trimmedEmail = email.trim()
+            // Check if email exists in students collection
+            val studentQuery = firestore.collection("students")
+                .whereEqualTo("email", trimmedEmail)
                 .limit(1)
                 .get()
                 .await()
-
-            if (query.isEmpty) {
-                return Result.failure(Exception("Student record not found. Ask Admin to add you."))
-            }
-
-            val document = query.documents.first()
-            val storedPassword = document.getString("password")
-
-            if (storedPassword != pass) {
-                return Result.failure(Exception("Invalid Password. Use the one provided by Admin."))
-            }
-
-            // 2. Create Firebase Auth User
-            try {
-                auth.createUserWithEmailAndPassword(email, pass).await()
-            } catch (e: Exception) {
-                // If user already exists in Auth but maybe just logging in via signup flow? 
-                // Or maybe clean up? For now return failure.
-                return Result.failure(Exception("Account creation failed: ${e.message}"))
-            }
-
-            // 3. Update Firestore Document ID to match Auth UID (Crucial for Role Check)
-            val newUid = auth.currentUser?.uid ?: return Result.failure(Exception("Auth logic error"))
-            
-            // We need to move the document to the new ID or update the existing one?
-            // Existing logic relies on Document ID == UID.
-            // So we must COPY the data to a new document with ID = UID and DELETE the old one (which had auto-ID).
-            
-            val oldDocRef = document.reference
-            val newDocRef = firestore.collection("students").document(newUid)
-            
-            firestore.runTransaction { transaction ->
-                val snapshot = transaction.get(oldDocRef)
-                val data = snapshot.data ?: return@runTransaction
-                // Update ID in data if consistent
-                val newData = data.toMutableMap()
-                newData["id"] = newUid
                 
-                transaction.set(newDocRef, newData)
-                transaction.delete(oldDocRef)
-            }.await()
+            var emailExists = !studentQuery.isEmpty
 
+            // If not found in students, check admins collection
+            if (!emailExists) {
+                val adminQuery = firestore.collection("admins")
+                    .whereEqualTo("email", trimmedEmail)
+                    .limit(1)
+                    .get()
+                    .await()
+                emailExists = !adminQuery.isEmpty
+            }
+
+            if (!emailExists) {
+                return Result.failure(Exception("Email not found in database. Please contact admin."))
+            }
+
+            // Note: If the user has NEVER logged in before, their Auth account might not exist yet 
+            // (due to our lazy-migration logic on first login). Firebase Email Enumeration Protection 
+            // will silently ignore the reset request in that case.
+            auth.sendPasswordResetEmail(trimmedEmail).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            val errorMessage = e.message ?: "Failed to send reset email"
+            Result.failure(Exception(errorMessage))
+        }
+    }
+
+    override suspend fun updatePassword(newPassword: String): Result<Unit> {
+        return try {
+            val user = currentUser ?: return Result.failure(Exception("No user logged in"))
+            user.updatePassword(newPassword).await()
+            
+            // Also update in Firestore to ensure consistency for initial login logic 
+            // where Auth account might be recreated if deleted
+            val uid = user.uid
+            val studentDoc = firestore.collection("students").document(uid).get().await()
+            if (studentDoc.exists()) {
+                firestore.collection("students").document(uid).update("password", newPassword).await()
+            } else {
+                val adminDoc = firestore.collection("admins").document(uid).get().await()
+                if (adminDoc.exists()) {
+                    firestore.collection("admins").document(uid).update("password", newPassword).await()
+                }
+            }
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
