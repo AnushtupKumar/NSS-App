@@ -55,10 +55,17 @@ class NSSMessagingService : FirebaseMessagingService() {
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     val db = FirebaseFirestore.getInstance()
-                    db.collection("users").document(userId)
-                        .update("fcmToken", token)
-                        .await()
-                    Log.d(TAG, "FCM Token updated for user $userId")
+                    val adminRef = db.collection("admins").document(userId)
+                    val studentRef = db.collection("students").document(userId)
+                    
+                    val adminDoc = adminRef.get().await()
+                    if (adminDoc.exists()) {
+                        adminRef.update("fcmToken", token).await()
+                        Log.d(TAG, "FCM Token updated for admin $userId")
+                    } else {
+                        studentRef.update("fcmToken", token).await()
+                        Log.d(TAG, "FCM Token updated for student $userId")
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error updating FCM token", e)
                 }

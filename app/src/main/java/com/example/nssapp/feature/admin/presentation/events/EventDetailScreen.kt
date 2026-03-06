@@ -63,7 +63,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.example.nssapp.core.domain.model.AttendanceStatus
 import com.example.nssapp.core.domain.model.Event
+import com.example.nssapp.core.domain.model.EventStatus
 import com.example.nssapp.core.domain.model.Wing
 import com.example.nssapp.feature.admin.presentation.events.components.EventFormDialog
 import com.google.zxing.BarcodeFormat
@@ -114,7 +116,7 @@ fun EventDetailScreen(
                         IconButton(onClick = { viewModel.exportAttendance(eventId) }) {
                             Icon(Icons.Default.Share, contentDescription = "Export CSV", tint = MaterialTheme.colorScheme.primary)
                         }
-                        if (event.status != "ACTIVE") {
+                        if (event.status != EventStatus.ACTIVE.value) {
                             IconButton(onClick = { showDeleteConfirm = true }) {
                                 Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                             }
@@ -283,7 +285,7 @@ fun EventDetailScreen(
                             }
                         )
                         
-                        if (successState.event.status != "ACTIVE") {
+                        if (successState.event.status != EventStatus.ACTIVE.value) {
                             FloatingActionButton(
                                 onClick = { showEditDialog = true },
                                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).padding(bottom = 80.dp)
@@ -314,7 +316,7 @@ fun EventDetailContent(
         BulkAttendanceDialog(
             onDismiss = { showBulkDialog = false },
             onConfirm = { rolls, _, bypass ->
-                onMarkBulk(rolls, "PRESENT", bypass)
+                onMarkBulk(rolls, AttendanceStatus.PRESENT.value, bypass)
                 showBulkDialog = false
             }
         )
@@ -423,24 +425,20 @@ fun EventDetailContent(
         Spacer(modifier = Modifier.height(8.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (event.status != "COMPLETED") {
-                if (event.status == "PAUSED" || event.status == "UPCOMING") {
-                    Button(onClick = { onStatusChange("ACTIVE") }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Start / Resume")
-                    }
-                } else if (event.status == "ACTIVE") {
-                     Button(
-                         onClick = { onStatusChange("PAUSED") }, 
-                         modifier = Modifier.weight(1f), 
-                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                     ) {
-                        Text("Pause Event")
-                    }
+            if (event.status == EventStatus.IDLE.value) {
+                 Button(onClick = { onStatusChange(EventStatus.ACTIVE.value) }, modifier = Modifier.weight(1f)) {
+                     Icon(Icons.Default.PlayArrow, contentDescription = null)
+                     Spacer(modifier = Modifier.width(4.dp))
+                     Text("Start Event")
+                 }
+            } else if (event.status == EventStatus.ACTIVE.value) {
+                 Button(
+                     onClick = { onStatusChange(EventStatus.IDLE.value) }, 
+                     modifier = Modifier.weight(1f), 
+                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                 ) {
+                    Text("End Event")
                 }
-            } else {
-                 Text("Event is Completed", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelLarge)
             }
         }
         
@@ -448,7 +446,7 @@ fun EventDetailContent(
         
         var showQrDialog by remember { mutableStateOf(false) }
 
-        if (event.status == "ACTIVE") {
+        if (event.status == EventStatus.ACTIVE.value) {
             Button(onClick = { showBulkDialog = true }, modifier = Modifier.fillMaxWidth()) {
                 Text("Manual Batch Attendance")
             }
@@ -474,7 +472,7 @@ fun EventDetailContent(
             Text("View Attendees")
         }
         
-        val canApplyPenalty = event.mandatory && event.negativeHours > 0 && (event.status == "ACTIVE" || event.status == "COMPLETED") && (!event.isPenaltyApplied)
+        val canApplyPenalty = event.mandatory && event.negativeHours > 0 && (event.status == EventStatus.ACTIVE.value || event.status == EventStatus.IDLE.value) && (!event.isPenaltyApplied)
         if (canApplyPenalty) {
             Spacer(modifier = Modifier.height(16.dp))
             Button(
@@ -539,7 +537,7 @@ fun BulkAttendanceDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(rollNumbers, "PRESENT", bypass) }) {
+            Button(onClick = { onConfirm(rollNumbers, AttendanceStatus.PRESENT.value, bypass) }) {
                 Text("Mark Present")
             }
         },
@@ -574,13 +572,13 @@ fun AttendeeItem(attendee: Attendee) {
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Roll: ${attendee.roll} • ${attendee.wing}", 
+                    text = "Roll: ${attendee.roll} • ${attendee.wings.joinToString(", ").ifEmpty { "No matching wings" }}", 
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             
-            val isPenalty = attendee.status == "PENALTY"
+            val isPenalty = attendee.status == AttendanceStatus.PENALTY.value
             Surface(
                 color = if (isPenalty) 
                            MaterialTheme.colorScheme.errorContainer 
@@ -658,10 +656,8 @@ fun QRCodeDialog(data: String, onDismiss: () -> Unit) {
 @Composable
 fun StatusChip(status: String) {
     val color = when(status) {
-        "ACTIVE" -> Color.Green
-        "PAUSED" -> Color.Yellow
-        "COMPLETED" -> Color.Gray
-        else -> Color.Blue // UPCOMING
+        EventStatus.ACTIVE.value -> Color.Green
+        else -> Color.Blue // idle
     }
     
     Surface(

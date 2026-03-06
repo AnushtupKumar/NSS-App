@@ -2,7 +2,9 @@ package com.example.nssapp.feature.admin.presentation.events
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.nssapp.core.domain.model.AttendanceStatus
 import com.example.nssapp.core.domain.model.Event
+import com.example.nssapp.core.domain.model.EventStatus
 import com.example.nssapp.core.domain.model.Wing
 import com.example.nssapp.feature.admin.domain.repository.AdminRepository
 import com.example.nssapp.feature.admin.domain.repository.AttendanceRepository
@@ -60,7 +62,7 @@ class AdminEventDetailViewModel @Inject constructor(
                 }
 
                 // Map studentId to status
-                val attendanceData = attendanceSnapshot.documents.associateBy({ it.id }, { it.getString("status") ?: "PRESENT" })
+                val attendanceData = attendanceSnapshot.documents.associateBy({ it.id }, { it.getString("status") ?: AttendanceStatus.PRESENT.value })
                 val studentIds = attendanceData.keys.toList()
 
                 // 2. Fetch those students
@@ -78,16 +80,24 @@ class AdminEventDetailViewModel @Inject constructor(
                  val wingsSnapshot = firestore.collection("wings").get().await()
                  val wingsMap = wingsSnapshot.documents.associateBy({ it.id }, { it.getString("name") ?: "Unknown" })
 
-                 val attendedStudents = allStudents.filter { studentIds.contains(it.id) }.map { student ->
-                     Attendee(
-                         id = student.id,
-                         roll = student.roll,
-                         name = student.name,
-                         wing = wingsMap[student.enrolledWings.firstOrNull()] ?: "Unknown Wing",
-                         status = attendanceData[student.id] ?: "PRESENT"
-                     )
-                 }
-                 _attendees.value = attendedStudents
+                  val currentEvent = (uiState.value as? EventDetailUiState.Success)?.event
+                  
+                  val attendedStudents = allStudents.filter { studentIds.contains(it.id) }.map { student ->
+                      val matchingWingIds = currentEvent?.let { ev ->
+                          student.enrolledWings.filter { it in ev.targetWings || it in ev.mandatoryWings }
+                      } ?: emptyList()
+                      
+                      val displayWings = matchingWingIds.mapNotNull { wingsMap[it] }
+                      
+                      Attendee(
+                          id = student.id,
+                          roll = student.roll,
+                          name = student.name,
+                          wings = displayWings,
+                          status = attendanceData[student.id] ?: AttendanceStatus.PRESENT.value
+                      )
+                  }
+                  _attendees.value = attendedStudents
             } catch (e: Exception) {
                  _attendees.value = emptyList()
             }
@@ -167,6 +177,6 @@ data class Attendee(
     val id: String,
     val roll: String,
     val name: String,
-    val wing: String,
+    val wings: List<String>,
     val status: String
 )

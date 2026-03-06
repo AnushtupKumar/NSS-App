@@ -1,7 +1,9 @@
 package com.example.nssapp.feature.admin.data.repository
 
 import com.example.nssapp.core.domain.model.Admin
+import com.example.nssapp.core.domain.model.AttendanceStatus
 import com.example.nssapp.core.domain.model.Event
+import com.example.nssapp.core.domain.model.EventStatus
 import com.example.nssapp.core.domain.model.Student
 import com.example.nssapp.core.domain.model.Wing
 import com.example.nssapp.feature.admin.domain.repository.AdminRepository
@@ -98,8 +100,10 @@ class AdminRepositoryImpl @Inject constructor(
 
     override suspend fun deleteWing(wingId: String): Result<Unit> {
         return try {
-            // SOFT DELETE: Just set the flag. References in students/events stay intact.
-            firestore.collection("wings").document(wingId).update("isDeleted", true).await()
+            // SOFT DELETE: Just set the flag. References in students and events stay intact.
+            firestore.collection("wings").document(wingId)
+                .update("isDeleted", true)
+                .await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -182,7 +186,10 @@ class AdminRepositoryImpl @Inject constructor(
                 firestore.collection("events").document(event.id)
             }
             val newEvent = event.copy(id = docRef.id)
-            docRef.set(newEvent).await()
+            
+            val batch = firestore.batch()
+            batch.set(docRef, newEvent)
+            batch.commit().await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -215,7 +222,50 @@ class AdminRepositoryImpl @Inject constructor(
 
     override suspend fun updateEventStatus(eventId: String, status: String): Result<Unit> {
         return try {
-            firestore.collection("events").document(eventId).update("status", status).await()
+            val eventRef = firestore.collection("events").document(eventId)
+            
+            if (status == EventStatus.IDLE.value) {
+                val eventDoc = eventRef.get().await()
+                val event = eventDoc.toObject(Event::class.java) ?: return Result.failure(Exception("Event not found"))
+                
+                // Find all student IDs that SHOULD have attended (targetWings)
+                val targetStudentIds = mutableSetOf<String>()
+                if (event.targetWings.isNotEmpty()) {
+                    for (wingId in event.targetWings) {
+                        val enrolledQuery = firestore.collection("students")
+                            .whereArrayContains("enrolledWings", wingId)
+                            .get().await()
+                        targetStudentIds.addAll(enrolledQuery.documents.map { it.id })
+                    }
+                }
+
+                // Find students who ALREADY have a record (PRESENT or PENALTY or existing ABSENT)
+                val attendanceSnapshot = eventRef.collection("attendance").get().await()
+                val existingStudentIds = attendanceSnapshot.documents.map { it.id }.toSet()
+                
+                val batch = firestore.batch()
+                val absentTimestamp = System.currentTimeMillis()
+                
+                // For each targeted student who doesn't have a record, create ABSENT
+                for (studentId in targetStudentIds) {
+                    if (!existingStudentIds.contains(studentId)) {
+                        val attendanceRef = eventRef.collection("attendance").document(studentId)
+                        val attendanceData = hashMapOf(
+                            "status" to AttendanceStatus.ABSENT.value,
+                            "timestamp" to absentTimestamp,
+                            "scannedBy" to "SYSTEM_IDLE",
+                            "studentId" to studentId
+                        )
+                        batch.set(attendanceRef, attendanceData)
+                    }
+                }
+                
+                batch.update(eventRef, "status", status)
+                batch.commit().await()
+                return Result.success(Unit)
+            }
+            
+            eventRef.update("status", status).await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -231,7 +281,39 @@ class AdminRepositoryImpl @Inject constructor(
 
     override suspend fun updateEvent(event: Event): Result<Unit> {
         return try {
-            firestore.collection("events").document(event.id).set(event).await()
+            val eventRef = firestore.collection("events").document(event.id)
+            
+            // Fetch old event to compare wings
+            val oldEventDoc = eventRef.get().await()
+            val oldTargetWings = oldEventDoc.get("targetWings") as? List<*> ?: emptyList<String>()
+            val oldMandatoryWings = oldEventDoc.get("mandatoryWings") as? List<*> ?: emptyList<String>()
+            
+            // Check if lists changed
+            val targetChanged = oldTargetWings.toSet() != event.targetWings.toSet()
+            val mandatoryChanged = oldMandatoryWings.toSet() != event.mandatoryWings.toSet()
+            
+            if (targetChanged || mandatoryChanged) {
+                // 1. Delete all attendance records for this event EXCEPT PRESENT
+                val attendances = eventRef.collection("attendance").get().await()
+                val batch = firestore.batch()
+                
+                for (doc in attendances.documents) {
+                    val status = doc.getString("status")
+                    if (status != AttendanceStatus.PRESENT.value) {
+                        // Restore hours if it was a PENALTY
+                        if (status == AttendanceStatus.PENALTY.value) {
+                            val studentId = doc.getString("studentId") ?: doc.id
+                            val studentRef = firestore.collection("students").document(studentId)
+                            batch.update(studentRef, "totalHours", FieldValue.increment(event.negativeHours))
+                        }
+                        batch.delete(doc.reference)
+                    }
+                }
+                
+                batch.commit().await()
+            }
+            
+            eventRef.set(event).await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

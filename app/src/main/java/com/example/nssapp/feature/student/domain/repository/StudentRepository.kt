@@ -12,8 +12,10 @@ interface StudentRepository {
     
     // Get attendance records to calculate stats. 
     // Return list of Event IDs or Attendance objects.
-    // Simpler for MVP: Get list of events where student is marked present.
     fun getAttendedEvents(studentId: String): Flow<List<String>>
+
+    // Get map of eventId -> status string
+    fun getAttendanceStatuses(studentId: String): Flow<Map<String, String>>
     
     suspend fun markAttendance(eventId: String, studentId: String): Result<Unit>
     

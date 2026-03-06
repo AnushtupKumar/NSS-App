@@ -1,8 +1,11 @@
 package com.example.nssapp.feature.student.presentation
 
+import android.R.attr.category
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.nssapp.core.domain.model.AttendanceStatus
 import com.example.nssapp.core.domain.model.Event
+import com.example.nssapp.core.domain.model.EventStatus
 import com.example.nssapp.core.domain.model.Student
 import com.example.nssapp.feature.auth.domain.repository.AuthRepository
 import com.example.nssapp.feature.student.domain.repository.StudentRepository
@@ -17,8 +20,13 @@ import java.util.Calendar
 import javax.inject.Inject
 
 enum class EventCategory {
-    ALL, INCOMING, ATTENDED, ABSENT, PENALIZED
+    ALL, INCOMING, ATTENDED, ABSENT
 }
+
+data class EventWithWings(
+    val event: Event,
+    val matchingWings: List<String> = emptyList()
+)
 
 @HiltViewModel
 class StudentHomeViewModel @Inject constructor(
@@ -30,7 +38,7 @@ class StudentHomeViewModel @Inject constructor(
     val uiState: StateFlow<StudentHomeUiState> = _uiState.asStateFlow()
 
     private var allEvents = emptyList<Event>()
-    private var attendedEventIds = emptyList<String>()
+    private var attendanceStatuses = emptyMap<String, String>() // eventId -> status
     private var currentStudent: Student? = null
 
     init {
@@ -58,7 +66,7 @@ class StudentHomeViewModel @Inject constructor(
                         allEvents = emptyList(),
                         filteredEvents = emptyList(),
                         attendancePercentage = 0f,
-                        attendedEventIds = emptyList(),
+                        attendanceStatuses = emptyMap(),
                         totalHours = 0.0,
                         selectedCategory = EventCategory.ALL,
                         selectedMonth = calendar.get(Calendar.MONTH),
@@ -68,14 +76,14 @@ class StudentHomeViewModel @Inject constructor(
                     // Start observing data changes reactively
                     combine(
                         studentRepository.getAllEvents(),
-                        studentRepository.getAttendedEvents(currentUser.uid)
-                    ) { events, attendanceIds ->
-                        attendedEventIds = attendanceIds
+                        studentRepository.getAttendanceStatuses(currentUser.uid)
+                    ) { events, statuses ->
+                        attendanceStatuses = statuses
                         allEvents = events.filter { event ->
-                            val isTargeted = event.targetWings.isEmpty() || event.targetWings.any { it in student.enrolledWings }
-                            val isMandatory = event.mandatoryWings.isEmpty() || event.mandatoryWings.any { it in student.enrolledWings }
-                            val isAttended = attendanceIds.contains(event.id)
-                            isTargeted || isMandatory || isAttended
+                            val isTargeted = event.targetWings.any { it in student.enrolledWings } || 
+                                           event.mandatoryWings.any { it in student.enrolledWings }
+                            val hasRecord = statuses.containsKey(event.id)
+                            isTargeted || hasRecord
                         }
                         updateFilteredState()
                     }.collect()
@@ -108,56 +116,35 @@ class StudentHomeViewModel @Inject constructor(
         val student = currentStudent ?: return
         val now = System.currentTimeMillis()
         
-        // Calculate total hours (all time)
-        var totalHours = 0.0
-        
         viewModelScope.launch {
-            // First we need to get ALL attendance objects for this student to know if they were actually penalized
             try {
-                // Since this requires a new query, we will use a simpler approach for now 
-                // based on the existing `attendedEventIds`
-                // Actually, let's keep the existing logic but refine it.
-                // If a student is in `attendedEventIds`, they are PRESENT.
-                // If `isPenaltyApplied` is true, and they are NOT in `attendedEventIds`, and they are NOT in `studentsExcluded`, they are PENALIZED.
-                for (event in allEvents) {
-                    if (attendedEventIds.contains(event.id)) {
-                        totalHours += event.positiveHours
-                    } else if (event.mandatory && event.isPenaltyApplied && event.date < now) {
-                        // Check if they were excluded
-                        if (!event.studentsExcluded.contains(student.roll)) {
-                            // Check if they were targeted by mandatory wings
-                            val isMandatoryForStudent = event.mandatoryWings.isEmpty() || event.mandatoryWings.any { it in student.enrolledWings }
-                            if (isMandatoryForStudent) {
-                                totalHours -= event.negativeHours
-                            }
-                        }
-                    }
-                }
-
-                // Attendance percentage (based on passed mandatory/targeted events)
+                // Attendance percentage (based on passed events the student was targeted for)
                 val passedTargetedEvents = allEvents.filter { event ->
-                    event.date < now && (
-                        event.targetWings.isEmpty() || event.targetWings.any { it in student.enrolledWings } ||
-                        event.mandatoryWings.isEmpty() || event.mandatoryWings.any { it in student.enrolledWings }
-                    )
+                    val isPast = event.endTime < now || event.status == EventStatus.IDLE.value
+                    val isTargeted = event.targetWings.any { it in student.enrolledWings } || 
+                                    event.mandatoryWings.any { it in student.enrolledWings }
+                    isPast && isTargeted
                 }.size
                 
+                val presentCount = attendanceStatuses.values.count { it == AttendanceStatus.PRESENT.value }
                 val attendancePercentage = if (passedTargetedEvents > 0) {
-                    (attendedEventIds.size.toFloat() / passedTargetedEvents.toFloat()) * 100
+                    (presentCount.toFloat() / passedTargetedEvents.toFloat()) * 100
                 } else 0f
 
                 val calendar = Calendar.getInstance()
                 val currentMonth = calendar.get(Calendar.MONTH)
                 val currentYear = calendar.get(Calendar.YEAR)
 
+                val currentCategory = (_uiState.value as? StudentHomeUiState.Success)?.selectedCategory ?: EventCategory.ALL
+
                 _uiState.value = StudentHomeUiState.Success(
                     student = student,
                     allEvents = allEvents,
                     filteredEvents = emptyList(), // Will be updated below
                     attendancePercentage = attendancePercentage,
-                    attendedEventIds = attendedEventIds,
-                    totalHours = totalHours,
-                    selectedCategory = EventCategory.ALL,
+                    attendanceStatuses = attendanceStatuses,
+                    totalHours = student.totalHours,
+                    selectedCategory = currentCategory,
                     selectedMonth = currentMonth,
                     selectedYear = currentYear
                 )
@@ -174,45 +161,37 @@ class StudentHomeViewModel @Inject constructor(
         val student = state.student
 
         viewModelScope.launch {
-            // Fetch all wings to check active status
+            // Fetch all wings to resolve names
             val allWingsResult = studentRepository.getAllWingsList()
             val allWingsMap = allWingsResult.associateBy { it.id }
 
             val filtered = allEvents.filter { event ->
-                val calendar = Calendar.getInstance()
-                calendar.timeInMillis = event.date
-                
-                val studentEnrolledInTarget = event.targetWings.isEmpty() || event.targetWings.any { it in student.enrolledWings }
-                val studentEnrolledInMandatory = event.mandatoryWings.isEmpty() || event.mandatoryWings.any { it in student.enrolledWings }
-                
-                val hasActiveTargetWing = event.targetWings.isEmpty() || 
-                    event.targetWings.any { it in student.enrolledWings && allWingsMap[it]?.isDeleted == false }
+                val status = attendanceStatuses[event.id]
                 
                 when (state.selectedCategory) {
                     EventCategory.ALL -> true
                     EventCategory.INCOMING -> {
-                        event.date >= now && studentEnrolledInTarget && hasActiveTargetWing
-                    }
-                    EventCategory.ATTENDED -> attendedEventIds.contains(event.id)
-                    EventCategory.ABSENT -> {
-                        val isPassed = event.date < now
-                        val notAttended = !attendedEventIds.contains(event.id)
+                        val isTargeted = event.targetWings.any { it in student.enrolledWings } || 
+                                        event.mandatoryWings.any { it in student.enrolledWings }
+                        val notReachedStartTime = event.startTime > now
+                        val noAttendanceRecord = status == null
                         
-                        val isMandatoryForStudent = event.mandatoryWings.isEmpty() || event.mandatoryWings.any { it in student.enrolledWings }
-                        val isPenalized = isPassed && event.mandatory && isMandatoryForStudent && event.isPenaltyApplied && 
-                                          !attendedEventIds.contains(event.id) && !event.studentsExcluded.contains(student.roll)
-                        
-                        isPassed && notAttended && studentEnrolledInTarget && !isPenalized
+                        // Targeted AND (time not reached OR no record)
+                        isTargeted && (notReachedStartTime || noAttendanceRecord)
                     }
-                    EventCategory.PENALIZED -> {
-                        val isPassed = event.date < now
-                        val isMandatoryForStudent = event.mandatoryWings.isEmpty() || event.mandatoryWings.any { it in student.enrolledWings }
-                        val isPenalized = isPassed && event.mandatory && isMandatoryForStudent && event.isPenaltyApplied && 
-                                          !attendedEventIds.contains(event.id) && !event.studentsExcluded.contains(student.roll)
-                        isPenalized
-                    }
+                    EventCategory.ATTENDED -> status == AttendanceStatus.PRESENT.value
+                    EventCategory.ABSENT -> status == AttendanceStatus.ABSENT.value || status == AttendanceStatus.PENALTY.value
                 }
-            }.sortedByDescending { it.date }
+            }.map { event ->
+                // Identify which of the student's wings match this event
+                val matchingWingIds = student.enrolledWings.filter { it in event.targetWings || it in event.mandatoryWings }
+                val matchingWingNames = matchingWingIds.mapNotNull { allWingsMap[it]?.name }
+                
+                EventWithWings(
+                    event = event,
+                    matchingWings = matchingWingNames
+                )
+            }.sortedByDescending { it.event.date }
 
             _uiState.value = state.copy(filteredEvents = filtered)
         }
@@ -224,9 +203,9 @@ sealed class StudentHomeUiState {
     data class Success(
         val student: Student,
         val allEvents: List<Event>,
-        val filteredEvents: List<Event>,
+        val filteredEvents: List<EventWithWings>,
         val attendancePercentage: Float,
-        val attendedEventIds: List<String>,
+        val attendanceStatuses: Map<String, String>,
         val totalHours: Double,
         val selectedCategory: EventCategory = EventCategory.ALL,
         val selectedMonth: Int,

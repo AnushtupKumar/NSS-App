@@ -5,14 +5,14 @@ interface AttendanceRepository {
     suspend fun markAttendance(
         eventId: String, 
         studentRoll: String,
-        status: String = "Present",
+        status: String = "PRESENT",
         bypassRestrictions: Boolean = false
     ): Result<Unit>
 
     suspend fun markAttendanceBulk(
         eventId: String,
         rollNumbers: List<String>,
-        status: String = "Present",
+        status: String = "PRESENT",
         bypassRestrictions: Boolean = false
     ): Result<List<String>>
 

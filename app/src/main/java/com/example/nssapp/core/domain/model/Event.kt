@@ -16,7 +16,7 @@ data class Event(
     @get:PropertyName("isPenaltyApplied")
     @set:PropertyName("isPenaltyApplied")
     var isPenaltyApplied: Boolean = false,
-    val status: String = "UPCOMING", // UPCOMING, ACTIVE, PAUSED, COMPLETED
+    val status: String = EventStatus.IDLE.value,
     val startTime: Long = 0,
     val endTime: Long = 0,
     val mandatoryWings: List<String> = emptyList()

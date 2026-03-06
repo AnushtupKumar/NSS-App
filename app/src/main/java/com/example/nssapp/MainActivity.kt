@@ -83,10 +83,22 @@ class MainActivity : ComponentActivity() {
             
             if (userId != null) {
                 val db = FirebaseFirestore.getInstance()
-                db.collection("users").document(userId)
-                    .update("fcmToken", token)
-                    .addOnSuccessListener { Log.d("MainActivity", "FCM Token updated successfully") }
-                    .addOnFailureListener { e -> Log.w("MainActivity", "Error updating token", e) }
+                // Try to update admins collection first
+                db.collection("admins").document(userId).get().addOnSuccessListener { doc ->
+                    if (doc.exists()) {
+                        doc.reference.update("fcmToken", token)
+                            .addOnSuccessListener { Log.d("MainActivity", "FCM Token updated in admins") }
+                    } else {
+                        // If not an admin, update students collection
+                        db.collection("students").document(userId).update("fcmToken", token)
+                            .addOnSuccessListener { Log.d("MainActivity", "FCM Token updated in students") }
+                            .addOnFailureListener { e -> Log.w("MainActivity", "Error updating token in students", e) }
+                    }
+                }.addOnFailureListener { e -> 
+                    // Fallback to students if admin check fails for some reason
+                    db.collection("students").document(userId).update("fcmToken", token)
+                        .addOnFailureListener { e2 -> Log.w("MainActivity", "Error updating token", e2) }
+                }
             }
         }
     }

@@ -1,6 +1,8 @@
 package com.example.nssapp.feature.admin.data.repository
 
+import com.example.nssapp.core.domain.model.AttendanceStatus
 import com.example.nssapp.core.domain.model.Event
+import com.example.nssapp.core.domain.model.EventStatus
 import com.example.nssapp.core.domain.model.Student
 import com.example.nssapp.feature.admin.domain.repository.AttendanceRepository
 import com.google.firebase.auth.FirebaseAuth
@@ -68,10 +70,10 @@ class AttendanceRepositoryImpl @Inject constructor(
                 return Result.failure(Exception("Event not found"))
             }
 
-            val eventStatus = eventDoc.getString("status") ?: "UPCOMING"
+            val eventStatus = eventDoc.getString("status") ?: EventStatus.IDLE.value
 
             if (!bypassRestrictions) {
-                if (eventStatus != "ACTIVE") {
+                if (eventStatus != EventStatus.ACTIVE.value) {
                     return Result.failure(Exception("Event is not currently active"))
                 }
                 val targetWings = eventDoc.get("targetWings") as? List<String> ?: emptyList()
@@ -92,13 +94,38 @@ class AttendanceRepositoryImpl @Inject constructor(
                 .collection("attendance").document(studentId)
 
             val attendanceData = hashMapOf(
-                "status" to status,
+                "status" to AttendanceStatus.PRESENT.value,
                 "timestamp" to System.currentTimeMillis(),
                 "scannedBy" to (auth.currentUser?.uid ?: "unknown"),
                 "studentId" to studentId
             )
 
-            attendanceRef.set(attendanceData).await()
+            // Data Aggregation: Update student totalHours
+            val studentRef = firestore.collection("students").document(studentId)
+            val positiveHours = eventDoc.getDouble("positiveHours") ?: 0.0
+            
+            firestore.runTransaction { transaction ->
+                val currentAttendance = transaction.get(attendanceRef)
+                val currentStatus = currentAttendance.getString("status")
+                
+                if (currentStatus != AttendanceStatus.PRESENT.value) {
+                    // Increment hours if they weren't already PRESENT
+                    val studentSnapshot = transaction.get(studentRef)
+                    val currentHours = studentSnapshot.getDouble("totalHours") ?: 0.0
+                    
+                    var hoursToAdd = positiveHours
+                    // If they were penalized, we should restore those hours too? 
+                    // Actually, the user says "mark attendance... status of present". 
+                    // If they were already penalized, maybe we should just override.
+                    if (currentStatus == AttendanceStatus.PENALTY.value) {
+                        hoursToAdd += eventDoc.getDouble("negativeHours") ?: 0.0
+                    }
+                    
+                    transaction.update(studentRef, "totalHours", currentHours + hoursToAdd)
+                }
+                transaction.set(attendanceRef, attendanceData)
+            }.await()
+            
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -153,8 +180,8 @@ class AttendanceRepositoryImpl @Inject constructor(
                 return Result.failure(Exception("Penalty already applied for this event"))
             }
 
-            if (event.status != "ACTIVE" && event.status != "COMPLETED") {
-                return Result.failure(Exception("Penalty can only be applied to Active or Completed events"))
+            if (event.status != EventStatus.ACTIVE.value && event.status != EventStatus.IDLE.value) {
+                return Result.failure(Exception("Penalty can only be applied to active or idle events"))
             }
 
             val mandatoryWings = event.mandatoryWings.ifEmpty { event.targetWings }
@@ -168,27 +195,23 @@ class AttendanceRepositoryImpl @Inject constructor(
             // Optimize: Use 'in' filter if wing count is small, or loop. Firestore 'in' has limit of 10.
             // For now, loop is fine but let's ensure we fetch student IDs once.
             for (wingId in mandatoryWings) {
-                // 1. Check new enrolledWings list
+                // Check enrolledWings list
                 val enrolledQuery = firestore.collection("students")
                     .whereArrayContains("enrolledWings", wingId)
                     .get()
                     .await()
                 targetStudentIds.addAll(enrolledQuery.documents.map { it.id })
-
-                // 2. Check legacy primaryWing field
-                val legacyQuery = firestore.collection("students")
-                    .whereEqualTo("primaryWing", wingId)
-                    .get()
-                    .await()
-                targetStudentIds.addAll(legacyQuery.documents.map { it.id })
             }
 
             targetStudentIds.removeAll(event.studentsExcluded.toSet())
 
             val attendanceQuery =
-                firestore.collection("events").document(eventId).collection("attendance").get()
+                firestore.collection("events").document(eventId).collection("attendance")
+                    .get()
                     .await()
-            val presentStudentIds = attendanceQuery.documents.map { it.id }.toSet()
+            val presentStudentIds = attendanceQuery.documents
+                .filter { it.getString("status") == AttendanceStatus.PRESENT.value }
+                .map { it.id }.toSet()
 
             var penaltyCount = 0
             val batch = firestore.batch()
@@ -200,12 +223,17 @@ class AttendanceRepositoryImpl @Inject constructor(
                         .collection("attendance").document(studentId)
 
                     val attendanceData = hashMapOf(
-                        "status" to "PENALTY",
+                        "status" to AttendanceStatus.PENALTY.value,
                         "timestamp" to penaltyTimestamp,
                         "scannedBy" to "SYSTEM_PENALTY",
                         "studentId" to studentId
                     )
                     batch.set(attendanceRef, attendanceData)
+                    
+                    // Update student totalHours (negative)
+                    val studentRef = firestore.collection("students").document(studentId)
+                    batch.update(studentRef, "totalHours", com.google.firebase.firestore.FieldValue.increment(-event.negativeHours))
+                    
                     penaltyCount++
                 }
             }

@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.width
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.nssapp.core.domain.model.Event
+import com.example.nssapp.core.domain.model.EventStatus
 import com.example.nssapp.core.domain.model.Wing
 import com.example.nssapp.feature.admin.presentation.events.components.EventFormDialog
 import java.text.SimpleDateFormat // Formatting
@@ -156,15 +157,14 @@ fun EventItem(event: Event, onClick: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Status Box
                 Surface(
-                    color = if (event.status == "ACTIVE") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    color = if (event.status == EventStatus.ACTIVE.value) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                     shape = MaterialTheme.shapes.small
                 ) {
                     Text(
                         text = event.status,
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (event.status == "ACTIVE") MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (event.status == EventStatus.ACTIVE.value) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }

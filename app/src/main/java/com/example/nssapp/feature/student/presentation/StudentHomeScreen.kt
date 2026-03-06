@@ -23,7 +23,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.nssapp.core.domain.model.AttendanceStatus
 import com.example.nssapp.core.domain.model.Event
+import com.example.nssapp.core.domain.model.EventStatus
 import java.text.DateFormatSymbols
 import java.text.SimpleDateFormat
 import java.util.*
@@ -115,7 +117,7 @@ fun StudentHomeScreen(
                                 state.filteredEvents
                             } else {
                                 state.filteredEvents.filter {
-                                    java.time.Instant.ofEpochMilli(it.date)
+                                    java.time.Instant.ofEpochMilli(it.event.date)
                                         .atZone(java.time.ZoneId.systemDefault())
                                         .toLocalDate() == selectedDate
                                 }
@@ -129,26 +131,13 @@ fun StudentHomeScreen(
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                items(eventsToShow, key = { it.id }) { event ->
-                                    val isAttended = state.attendedEventIds.contains(event.id)
-                                    val isPassed = event.date < System.currentTimeMillis()
-                                    
-                                    // A student is penalized ONLY if the event passed, penalty applied, it's mandatory for them, 
-                                    // they are NOT in the attended list, and they are NOT excluded.
-                                    val isMandatoryForStudent = event.mandatoryWings.isEmpty() || event.mandatoryWings.any { it in state.student.enrolledWings }
-                                    val isPenalized = isPassed && event.mandatory && isMandatoryForStudent && event.isPenaltyApplied && 
-                                                      !isAttended && !event.studentsExcluded.contains(state.student.roll)
-                                    
-                                    // A student is missed/absent if the event passed, they didn't attend, it was targeted for them,
-                                    // and they are NOT already categorized as penalized.
-                                    val isTargetedForStudent = event.targetWings.isEmpty() || event.targetWings.any { it in state.student.enrolledWings }
-                                    val isAbsent = isPassed && !isAttended && isTargetedForStudent && !isPenalized
+                                items(eventsToShow, key = { it.event.id }) { item ->
+                                    val statusString = state.attendanceStatuses[item.event.id]
                                     
                                     StudentEventItem(
-                                        event = event,
-                                        isAttended = isAttended,
-                                        isAbsent = isAbsent,
-                                        isPenalized = isPenalized
+                                        event = item.event,
+                                        status = statusString,
+                                        matchingWings = item.matchingWings
                                     )
                                 }
                             }
@@ -265,8 +254,10 @@ fun CategoryFilterChips(selectedCategory: EventCategory, onCategorySelected: (Ev
             FilterChip(
                 selected = isSelected,
                 onClick = { onCategorySelected(category) },
-                label = { Text(category.name.lowercase()
-                    .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }) },
+                label = { 
+                    val text = if (category == EventCategory.ABSENT) "Missed" else category.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
+                    Text(text) 
+                },
                 leadingIcon = if (isSelected) {
                     { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
                 } else null,
@@ -281,9 +272,14 @@ fun CategoryFilterChips(selectedCategory: EventCategory, onCategorySelected: (Ev
 }
 
 @Composable
-fun StudentEventItem(event: Event, isAttended: Boolean, isAbsent: Boolean, isPenalized: Boolean) {
+fun StudentEventItem(event: Event, status: String?, matchingWings: List<String> = emptyList()) {
     val dateFormat = SimpleDateFormat("dd MMM", Locale.getDefault())
     val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
+    
+    val isAttended = status == AttendanceStatus.PRESENT.value
+    val isPenalty = status == AttendanceStatus.PENALTY.value
+    val isAbsent = status == AttendanceStatus.ABSENT.value
+    val isUpcoming = status == null && event.date >= System.currentTimeMillis()
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -340,19 +336,28 @@ fun StudentEventItem(event: Event, isAttended: Boolean, isAbsent: Boolean, isPen
                     )
                 }
                 
-                Spacer(modifier = Modifier.height(8.dp))
-                
+                // Matching Wings
+                if (matchingWings.isNotEmpty()) {
+                    Text(
+                        text = "Wings: ${matchingWings.joinToString(", ")}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
                 // Badges
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (isAttended) {
                         StatusBadge("Attended", Color(0xFF10B981))
                         HoursBadge("+${event.positiveHours}", Color(0xFF10B981))
-                    } else if (isPenalized) {
+                    } else if (isPenalty) {
                         StatusBadge("Penalized", MaterialTheme.colorScheme.error)
                         HoursBadge("-${event.negativeHours}", MaterialTheme.colorScheme.error)
                     } else if (isAbsent) {
                         StatusBadge("Missed", Color.Gray)
-                    } else if (event.date >= System.currentTimeMillis()) {
+                    } else if (isUpcoming) {
                         StatusBadge("Upcoming", MaterialTheme.colorScheme.secondary)
                     }
                     
