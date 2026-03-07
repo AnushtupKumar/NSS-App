@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
 @HiltViewModel
@@ -58,21 +59,38 @@ class AuthViewModel @Inject constructor(
 
     private fun checkUserRole() {
         viewModelScope.launch {
-            // If already loading from login, keep loading. Else set loading?
-            // Usually login -> loading -> checking role -> success
-            
             val roleResult = repository.getUserRole()
             if (roleResult.isSuccess) {
                 val role = roleResult.getOrNull()
                 if (role == "admin") {
                     _authState.value = AuthState.SuccessAdmin
                 } else if (role == "student") {
-                    _authState.value = AuthState.SuccessStudent
+                    checkFaceEmbedding()
                 } else {
                      _authState.value = AuthState.Error("Unknown Role")
                 }
             } else {
                 _authState.value = AuthState.Error(roleResult.exceptionOrNull()?.message ?: "Role Check Failed")
+            }
+        }
+    }
+
+    private fun checkFaceEmbedding() {
+        viewModelScope.launch {
+            val uid = repository.currentUser?.uid ?: return@launch
+            val studentDoc = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                .collection("students").document(uid).get()
+                .await()
+            
+            if (studentDoc.exists()) {
+                val hasEmbedding = studentDoc.get("faceEmbedding") != null
+                if (hasEmbedding) {
+                    _authState.value = AuthState.SuccessStudent
+                } else {
+                    _authState.value = AuthState.RequiresFaceRegistration(uid)
+                }
+            } else {
+                _authState.value = AuthState.Error("Student profile not found")
             }
         }
     }
@@ -83,6 +101,7 @@ sealed class AuthState {
     object Loading : AuthState()
     object SuccessAdmin : AuthState()
     object SuccessStudent : AuthState()
+    data class RequiresFaceRegistration(val studentId: String) : AuthState()
     data class Error(val message: String) : AuthState()
 }
 

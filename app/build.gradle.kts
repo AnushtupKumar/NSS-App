@@ -45,6 +45,9 @@ android {
             useLegacyPackaging = true
         }
     }
+    androidResources {
+        noCompress += "tflite"
+    }
 }
 
 dependencies {
@@ -101,8 +104,18 @@ dependencies {
     // QR Code
     implementation("com.google.zxing:core:3.5.1")
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
+    // ML Kit Face Detection
+    implementation(libs.mlkit.face.detection)
+
     // CameraX concurrent
     implementation("androidx.concurrent:concurrent-futures-ktx:1.1.0")
+
+    // Guava (used by ML Kit/TFLite futures)
+    implementation(libs.guava)
+
+    // TFLite for Face Recognition
+    implementation(libs.tensorflow.lite)
+    implementation(libs.tensorflow.lite.support)
 
     // Room
     implementation(libs.androidx.room.runtime)

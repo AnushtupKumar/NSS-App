@@ -35,6 +35,12 @@ fun RootNavigation() {
                     popUpTo("login") { inclusive = true }
                 }
             }
+            is AuthState.RequiresFaceRegistration -> {
+                val studentId = (authState as AuthState.RequiresFaceRegistration).studentId
+                navController.navigate("face_registration/$studentId") {
+                    popUpTo("login") { inclusive = true }
+                }
+            }
             else -> Unit
         }
     }
@@ -42,6 +48,31 @@ fun RootNavigation() {
     NavHost(navController = navController, startDestination = "login") {
         composable("login") {
             LoginScreen(viewModel = authViewModel)
+        }
+        composable(
+            route = "face_registration/{studentId}",
+            arguments = listOf(androidx.navigation.navArgument("studentId") { type = androidx.navigation.NavType.StringType })
+        ) { backStackEntry ->
+            val studentId = backStackEntry.arguments?.getString("studentId") ?: return@composable
+            
+            // Getting context and creating FaceRecognizer manually here to pass it in. 
+            // In a full app this might be DI injected via Hilt.
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val faceRecognizer = androidx.compose.runtime.remember { com.example.nssapp.util.FaceRecognizer(context) }
+            val faceRegistrationViewModel: com.example.nssapp.feature.student.presentation.face.FaceRegistrationViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+
+            com.example.nssapp.feature.student.presentation.face.FaceRegistrationScreen(
+                studentId = studentId,
+                faceRecognizer = faceRecognizer,
+                onRegistrationSuccess = {
+                    navController.navigate("student_home") {
+                        popUpTo("face_registration/{studentId}") { inclusive = true }
+                    }
+                },
+                onSaveEmbedding = { embedding ->
+                    faceRegistrationViewModel.saveFaceEmbedding(studentId, embedding)
+                }
+            )
         }
         composable("admin_home") {
             AdminHomeScreen(

@@ -7,7 +7,8 @@ data class Student(
     val roll: String = "",
     val enrolledWings: List<String> = emptyList(), // List of Wing IDs
     val eventsAttended: List<String> = emptyList(),
-    val password: String = "", // Added field for initial password management (Not production secure but fits requirement)
+    val password: String = "", // Added field for initial password management
     val fcmToken: String = "",
-    val totalHours: Double = 0.0
+    val totalHours: Double = 0.0,
+    val faceEmbedding: List<Float>? = null
 )

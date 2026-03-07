@@ -72,7 +72,7 @@ fun ScanScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Scan QR Code") },
+                title = { Text(if (uiState is ScanUiState.RequiresFaceScan) "Verify Identity" else "Scan QR Code") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -83,29 +83,51 @@ fun ScanScreen(
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
             if (hasCameraPermission) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { ctx ->
-                        val previewView = PreviewView(ctx).apply {
-                            layoutParams = ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT
-                            )
+                
+                val isVerifyingFace = uiState is ScanUiState.RequiresFaceScan
+                val isCameraActive = uiState is ScanUiState.Idle || uiState is ScanUiState.RequiresFaceScan
+                val targetEmbedding = (uiState as? ScanUiState.RequiresFaceScan)?.targetEmbedding
+                val faceRecognizer = remember { com.example.nssapp.util.FaceRecognizer(context) }
+
+                val previewView = remember {
+                    PreviewView(context).apply {
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                    }
+                }
+
+                LaunchedEffect(isVerifyingFace, targetEmbedding, isCameraActive) {
+                    val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+                    cameraProviderFuture.addListener({
+                        val cameraProvider = cameraProviderFuture.get()
+                        
+                        cameraProvider.unbindAll()
+                        if (!isCameraActive) return@addListener
+                        
+                        val preview = Preview.Builder().build().also {
+                            it.setSurfaceProvider(previewView.surfaceProvider)
                         }
                         
-                        val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-                        cameraProviderFuture.addListener({
-                            val cameraProvider = cameraProviderFuture.get()
-                            
-                            val preview = Preview.Builder().build().also {
-                                it.setSurfaceProvider(previewView.surfaceProvider)
-                            }
-                            
-                            val imageAnalysis = ImageAnalysis.Builder()
-                                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                                .build()
-                            
-                            imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(ctx)) { imageProxy ->
+                        val imageAnalysis = ImageAnalysis.Builder()
+                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                            .build()
+                        
+                        if (isVerifyingFace && targetEmbedding != null) {
+                            imageAnalysis.setAnalyzer(
+                                Executors.newSingleThreadExecutor(),
+                                com.example.nssapp.util.FaceAnalyzer(
+                                    faceRecognizer = faceRecognizer,
+                                    targetEmbedding = targetEmbedding,
+                                    onFaceDetected = { _, _ -> },
+                                    onVerificationResult = { isMatch ->
+                                        viewModel.onFaceVerificationResult(isMatch)
+                                    }
+                                )
+                            )
+                        } else {
+                            imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(context)) { imageProxy ->
                                 processImageProxy(imageProxy) { barcodes ->
                                     barcodes.forEach { barcode ->
                                         barcode.rawValue?.let { code ->
@@ -114,40 +136,71 @@ fun ScanScreen(
                                     }
                                 }
                             }
-                            
-                            try {
-                                cameraProvider.unbindAll()
-                                cameraProvider.bindToLifecycle(
-                                    lifecycleOwner,
-                                    CameraSelector.DEFAULT_BACK_CAMERA,
-                                    preview,
-                                    imageAnalysis
-                                )
-                            } catch (exc: Exception) {
-                                Log.e("ScanScreen", "Use case binding failed", exc)
-                            }
-                            
-                        }, ContextCompat.getMainExecutor(ctx))
+                        }
                         
-                        previewView
+                        val cameraSelector = if (isVerifyingFace) {
+                            CameraSelector.DEFAULT_FRONT_CAMERA
+                        } else {
+                            CameraSelector.DEFAULT_BACK_CAMERA
+                        }
+
+                        try {
+                            cameraProvider.bindToLifecycle(
+                                lifecycleOwner,
+                                cameraSelector,
+                                preview,
+                                imageAnalysis
+                            )
+                        } catch (exc: Exception) {
+                            Log.e("ScanScreen", "Use case binding failed", exc)
+                        }
+                        
+                    }, ContextCompat.getMainExecutor(context))
+                }
+
+                if (isCameraActive) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { previewView }
+                    )
+                } else {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        // Keep it blank while showing dialogs
                     }
-                )
+                }
                 
                 // Overlay for scanning area or instructions
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // Darken background
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = 100.dp, bottom = 100.dp, start = 40.dp, end = 40.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Surface(
-                            color = Color.Transparent,
-                            shape = MaterialTheme.shapes.extraLarge,
-                            border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
-                            modifier = Modifier.size(250.dp)
-                        ) {}
+                    if (!isVerifyingFace) {
+                        // QR Code Scanner Box
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = 100.dp, bottom = 100.dp, start = 40.dp, end = 40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Surface(
+                                color = Color.Transparent,
+                                shape = MaterialTheme.shapes.extraLarge,
+                                border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.size(250.dp)
+                            ) {}
+                        }
+                    } else {
+                        // Face Verification Box (Circle)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = 80.dp),
+                            contentAlignment = Alignment.TopCenter
+                        ) {
+                             Surface(
+                                color = Color.Transparent,
+                                shape = androidx.compose.foundation.shape.CircleShape,
+                                border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary),
+                                modifier = Modifier.size(280.dp)
+                            ) {}
+                        }
                     }
                     
                     Box(modifier = Modifier.fillMaxSize().padding(bottom = 60.dp), contentAlignment = Alignment.BottomCenter) {
@@ -158,7 +211,7 @@ fun ScanScreen(
                             shadowElevation = 8.dp
                         ) {
                             Text(
-                                text = "Align QR code within the frame",
+                                text = if (isVerifyingFace) "Smile at the camera to verify your identity" else "Align QR code within the frame",
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
                             )
@@ -174,14 +227,12 @@ fun ScanScreen(
                     is ScanUiState.Success -> {
                         AlertDialog(
                             onDismissRequest = { 
-                                viewModel.resetState() 
-                                navController.popBackStack() // Or just reset? User might scan multiple? No usually one event per time.
+                                navController.popBackStack() 
                             },
                             title = { Text("Success") },
                             text = { Text((uiState as ScanUiState.Success).message) },
                             confirmButton = {
                                 Button(onClick = { 
-                                    viewModel.resetState()
                                     navController.popBackStack() 
                                 }) {
                                     Text("OK")
@@ -191,12 +242,12 @@ fun ScanScreen(
                     }
                     is ScanUiState.Error -> {
                         AlertDialog(
-                            onDismissRequest = { viewModel.resetState() },
+                            onDismissRequest = { navController.popBackStack() },
                             title = { Text("Error") },
                             text = { Text((uiState as ScanUiState.Error).message) },
                             confirmButton = {
-                                Button(onClick = { viewModel.resetState() }) {
-                                    Text("Retry")
+                                Button(onClick = { navController.popBackStack() }) {
+                                    Text("OK")
                                 }
                             }
                         )

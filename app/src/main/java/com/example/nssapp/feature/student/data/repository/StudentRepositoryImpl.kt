@@ -175,4 +175,15 @@ class StudentRepositoryImpl @Inject constructor(
             Result.failure(e)
         }
     }
+
+    override suspend fun saveFaceEmbedding(studentId: String, embedding: List<Float>): Result<Unit> {
+        return try {
+            firestore.collection("students").document(studentId)
+                .update("faceEmbedding", embedding)
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
