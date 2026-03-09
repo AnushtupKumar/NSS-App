@@ -115,6 +115,15 @@ class AdminEventDetailViewModel @Inject constructor(
         }
     }
 
+    fun deleteAttendee(eventId: String, studentId: String) {
+        viewModelScope.launch {
+            val result = attendanceRepository.deleteStudentAttendance(eventId, studentId)
+            if (result.isSuccess) {
+                loadAttendees(eventId) // Refresh list
+            }
+        }
+    }
+
     fun updateStatus(eventId: String, status: String) {
         viewModelScope.launch {
             repository.updateEventStatus(eventId, status)

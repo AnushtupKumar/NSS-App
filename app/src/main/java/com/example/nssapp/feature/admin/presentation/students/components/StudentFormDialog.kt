@@ -16,12 +16,11 @@ fun StudentFormDialog(
     initialStudent: Student? = null,
     wings: List<Wing>,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String, List<String>, String) -> Unit
+    onConfirm: (String, String, String, List<String>) -> Unit
 ) {
     var name by remember { mutableStateOf(initialStudent?.name ?: "") }
     var email by remember { mutableStateOf(initialStudent?.email ?: "") }
     var roll by remember { mutableStateOf(initialStudent?.roll ?: "") }
-    var password by remember { mutableStateOf(initialStudent?.password ?: "") }
     var showError by remember { mutableStateOf(false) }
     
     val selectedWings = remember { mutableStateListOf<String>().apply {
@@ -37,7 +36,6 @@ fun StudentFormDialog(
                     OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = roll, onValueChange = { roll = it }, label = { Text("Roll No") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password") }, modifier = Modifier.fillMaxWidth())
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("Select Wings:", style = MaterialTheme.typography.titleSmall)
@@ -69,9 +67,9 @@ fun StudentFormDialog(
         confirmButton = {
             Button(
                 onClick = { 
-                    if (name.isNotBlank() && email.isNotBlank() && roll.isNotBlank() && selectedWings.isNotEmpty() && password.isNotBlank()) {
+                    if (name.isNotBlank() && email.isNotBlank() && roll.isNotBlank() && selectedWings.isNotEmpty()) {
                          showError = false
-                         onConfirm(name, email, roll, selectedWings.toList(), password)
+                         onConfirm(name, email, roll, selectedWings.toList())
                     } else {
                          showError = true
                     }

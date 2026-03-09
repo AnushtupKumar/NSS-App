@@ -10,23 +10,21 @@ import com.google.firebase.firestore.snapshots
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+
 import javax.inject.Inject
-import com.example.nssapp.core.data.local.dao.EventDao
-import com.example.nssapp.core.data.local.entity.EventEntity
+
 
 class StudentRepositoryImpl @Inject constructor(
-    private val firestore: FirebaseFirestore,
-    private val eventDao: EventDao
+    private val firestore: FirebaseFirestore
 ) : StudentRepository {
 
-    private val repositoryScope = CoroutineScope(Dispatchers.IO)
+
 
     override suspend fun getStudentProfile(studentId: String): Result<Student> {
         return try {
@@ -43,21 +41,14 @@ class StudentRepositoryImpl @Inject constructor(
     }
 
     override fun getAllEvents(): Flow<List<Event>> {
-        // Kick off background sync
-        repositoryScope.launch {
-            firestore.collection("events")
-                .snapshots()
-                .collect { snapshot ->
-                    val events = snapshot.documents.mapNotNull { doc ->
-                        doc.toObject(Event::class.java)?.copy(id = doc.id)
-                    }
-                    val entities = events.map { EventEntity.fromEvent(it) }
-                    eventDao.insertEvents(entities)
+        return firestore.collection("events")
+            .snapshots()
+            .map { snapshot ->
+                snapshot.documents.mapNotNull { doc ->
+                    doc.toObject(Event::class.java)?.copy(id = doc.id)
                 }
-        }
-        
-        // Yield cached results instantly
-        return eventDao.getAllEvents().map { entities -> entities.map { it.toEvent() } }.catch { emit(emptyList()) }
+            }
+            .catch { emit(emptyList()) }
     }
 
     override fun getAttendedEvents(studentId: String): Flow<List<String>> {
@@ -79,7 +70,8 @@ class StudentRepositoryImpl @Inject constructor(
             .snapshots()
             .map { snapshot ->
                 snapshot.documents.mapNotNull { doc ->
-                    val eventId = doc.reference.parent.parent?.id
+                    val pathSegments = doc.reference.path.split("/")
+                    val eventId = if (pathSegments.size >= 2) pathSegments[1] else null
                     val status = doc.getString("status")
                     if (eventId != null && status != null) {
                         eventId to status
@@ -87,6 +79,30 @@ class StudentRepositoryImpl @Inject constructor(
                 }.toMap()
             }
             .catch { emit(emptyMap()) }
+    }
+
+    override fun getAttendanceForEvents(eventIds: List<String>, studentId: String): Flow<Map<String, String>> = callbackFlow {
+        if (eventIds.isEmpty()) {
+            trySend(emptyMap())
+            return@callbackFlow
+        }
+        val currentStatus = mutableMapOf<String, String>()
+        val listeners = eventIds.map { eventId ->
+            firestore.collection("events").document(eventId).collection("attendance").document(studentId)
+                .addSnapshotListener { snapshot, error ->
+                    if (error == null) {
+                        if (snapshot != null && snapshot.exists()) {
+                            currentStatus[eventId] = snapshot.getString("status") ?: AttendanceStatus.PRESENT.value
+                        } else {
+                            currentStatus.remove(eventId)
+                        }
+                        trySend(currentStatus.toMap())
+                    }
+                }
+        }
+        awaitClose {
+            listeners.forEach { it.remove() }
+        }
     }
 
     override suspend fun markAttendance(eventId: String, studentId: String): Result<Unit> {
@@ -134,17 +150,6 @@ class StudentRepositoryImpl @Inject constructor(
                     throw Exception("Attendance already marked")
                 }
                 
-                val studentRef = firestore.collection("students").document(studentId)
-                val studentSnapshot = transaction.get(studentRef)
-                val currentHours = studentSnapshot.getDouble("totalHours") ?: 0.0
-                
-                var hoursToAdd = event.positiveHours
-                // If they were penalized, restore those hours manually (though Student marking is usually for Active status)
-                if (currentStatus == AttendanceStatus.PENALTY.value) {
-                    hoursToAdd += event.negativeHours
-                }
-                
-                transaction.update(studentRef, "totalHours", currentHours + hoursToAdd)
                 transaction.set(docRef, attendanceData)
             }.await()
             Result.success(Unit)
@@ -173,6 +178,18 @@ class StudentRepositoryImpl @Inject constructor(
             Result.success(snapshot.exists())
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    override suspend fun getAttendanceStatus(eventId: String, studentId: String): String? {
+        return try {
+            val snapshot = firestore.collection("events").document(eventId)
+                .collection("attendance").document(studentId)
+                .get()
+                .await()
+            snapshot.getString("status")
+        } catch (e: Exception) {
+            null
         }
     }
 

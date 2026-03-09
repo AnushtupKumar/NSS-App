@@ -14,6 +14,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -131,17 +134,16 @@ fun StudentListScreen(
                                 showAddStudentDialog = false 
                                 editingStudent = null
                             },
-                            onConfirm = { name, email, roll, wingIds, password ->
+                            onConfirm = { name, email, roll, wingIds ->
                                 if (editingStudent != null) {
                                     viewModel.updateStudent(editingStudent!!.copy(
                                         name = name, 
                                         email = email, 
                                         roll = roll, 
-                                        enrolledWings = wingIds, 
-                                        password = password
+                                        enrolledWings = wingIds
                                     ))
                                 } else {
-                                    viewModel.addStudent(name, email, roll, wingIds, password)
+                                    viewModel.addStudent(name, email, roll, wingIds, "temp@1234")
                                 }
                                 showAddStudentDialog = false
                                 editingStudent = null
@@ -208,6 +210,22 @@ fun StudentItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Avatar
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = student.name.take(1).uppercase(),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = student.name, 
@@ -241,14 +259,6 @@ fun StudentItem(
                     style = MaterialTheme.typography.bodySmall, 
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (student.password.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Pass: ${student.password}", 
-                        style = MaterialTheme.typography.labelSmall, 
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
             }
             Row {
                 IconButton(onClick = onEdit) {

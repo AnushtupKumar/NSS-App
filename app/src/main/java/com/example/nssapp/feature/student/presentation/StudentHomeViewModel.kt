@@ -15,9 +15,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import javax.inject.Inject
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 enum class EventCategory {
     ALL, INCOMING, ATTENDED, ABSENT
@@ -73,20 +77,24 @@ class StudentHomeViewModel @Inject constructor(
                         selectedYear = calendar.get(Calendar.YEAR)
                     )
 
-                    // Start observing data changes reactively
-                    combine(
-                        studentRepository.getAllEvents(),
-                        studentRepository.getAttendanceStatuses(currentUser.uid)
-                    ) { events, statuses ->
-                        attendanceStatuses = statuses
-                        allEvents = events.filter { event ->
-                            val isTargeted = event.targetWings.any { it in student.enrolledWings } || 
-                                           event.mandatoryWings.any { it in student.enrolledWings }
-                            val hasRecord = statuses.containsKey(event.id)
-                            isTargeted || hasRecord
+                    // Start observing events changes
+                    studentRepository.getAllEvents().flatMapLatest { events ->
+                        // Identify targeted/mandatory events
+                        val targetedEvents = events.filter { event ->
+                             val isTargeted = event.targetWings.isEmpty() || 
+                                              event.targetWings.any { it in student.enrolledWings } || 
+                                              event.mandatoryWings.any { it in student.enrolledWings }
+                             val isAttended = student.eventsAttended.contains(event.id)
+                             isTargeted || isAttended
                         }
+                        
+                        studentRepository.getAttendanceForEvents(targetedEvents.map { it.id }, student.id)
+                            .map { statuses -> Pair(targetedEvents, statuses) }
+                    }.collect { (events, statuses) ->
+                        allEvents = events
+                        attendanceStatuses = statuses
                         updateFilteredState()
-                    }.collect()
+                    }
                 } else {
                     _uiState.value = StudentHomeUiState.Error("Failed to load profile")
                 }
@@ -131,6 +139,16 @@ class StudentHomeViewModel @Inject constructor(
                     (presentCount.toFloat() / passedTargetedEvents.toFloat()) * 100
                 } else 0f
 
+                var calculatedTotalHours = 0.0
+                allEvents.forEach { event ->
+                    val status = attendanceStatuses[event.id]
+                    if (status == AttendanceStatus.PRESENT.value) {
+                        calculatedTotalHours += event.positiveHours
+                    } else if (status == AttendanceStatus.PENALTY.value) {
+                        calculatedTotalHours -= event.negativeHours
+                    }
+                }
+
                 val calendar = Calendar.getInstance()
                 val currentMonth = calendar.get(Calendar.MONTH)
                 val currentYear = calendar.get(Calendar.YEAR)
@@ -143,7 +161,7 @@ class StudentHomeViewModel @Inject constructor(
                     filteredEvents = emptyList(), // Will be updated below
                     attendancePercentage = attendancePercentage,
                     attendanceStatuses = attendanceStatuses,
-                    totalHours = student.totalHours,
+                    totalHours = calculatedTotalHours,
                     selectedCategory = currentCategory,
                     selectedMonth = currentMonth,
                     selectedYear = currentYear

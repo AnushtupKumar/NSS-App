@@ -380,16 +380,32 @@ fun StudentEventItem(event: Event, status: String?, matchingWings: List<String> 
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
+                // Hours Display
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 4.dp)) {
+                    Text(
+                        text = "+${event.positiveHours} Hrs",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary, // Using primary since bright green might fail contrast in dark mode
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (event.mandatory) {
+                        Text(
+                            text = "-${event.negativeHours} Hrs",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
                 // Badges
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (isAttended) {
-                        StatusBadge("Attended", Color(0xFF10B981))
-                        HoursBadge("+${event.positiveHours}", Color(0xFF10B981))
+                        StatusBadge("Attended", MaterialTheme.colorScheme.primary)
                     } else if (isPenalty) {
                         StatusBadge("Penalized", MaterialTheme.colorScheme.error)
-                        HoursBadge("-${event.negativeHours}", MaterialTheme.colorScheme.error)
                     } else if (isAbsent) {
-                        StatusBadge("Missed", Color.Gray)
+                        StatusBadge("Missed", MaterialTheme.colorScheme.outline)
                     } else if (isUpcoming) {
                         StatusBadge("Upcoming", MaterialTheme.colorScheme.secondary)
                     }
@@ -404,7 +420,7 @@ fun StudentEventItem(event: Event, status: String?, matchingWings: List<String> 
                 Icon(
                     Icons.Default.Verified, 
                     contentDescription = "Verified", 
-                    tint = Color(0xFF10B981),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(32.dp)
                 )
             }

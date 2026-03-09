@@ -19,14 +19,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -220,37 +227,84 @@ fun ScanScreen(
                 }
                 
                 // Result Handling
-                when (uiState) {
+                val haptic = LocalHapticFeedback.current
+                LaunchedEffect(uiState) {
+                    if (uiState is ScanUiState.Success) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        kotlinx.coroutines.delay(1500)
+                        navController.popBackStack()
+                    } else if (uiState is ScanUiState.Error) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                }
+                
+                when (val state = uiState) {
                     is ScanUiState.Loading -> {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     }
                     is ScanUiState.Success -> {
-                        AlertDialog(
-                            onDismissRequest = { 
-                                navController.popBackStack() 
-                            },
-                            title = { Text("Success") },
-                            text = { Text((uiState as ScanUiState.Success).message) },
-                            confirmButton = {
-                                Button(onClick = { 
-                                    navController.popBackStack() 
-                                }) {
-                                    Text("OK")
+                        Box(
+                            modifier = Modifier.fillMaxSize().padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = MaterialTheme.shapes.large,
+                                shadowElevation = 8.dp
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = "Success",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(64.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = state.message,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
                                 }
                             }
-                        )
+                        }
                     }
                     is ScanUiState.Error -> {
-                        AlertDialog(
-                            onDismissRequest = { navController.popBackStack() },
-                            title = { Text("Error") },
-                            text = { Text((uiState as ScanUiState.Error).message) },
-                            confirmButton = {
-                                Button(onClick = { navController.popBackStack() }) {
-                                    Text("OK")
+                        Box(
+                            modifier = Modifier.fillMaxSize().padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                shape = MaterialTheme.shapes.large,
+                                shadowElevation = 8.dp
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = "Error",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(64.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = state.message,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Button(onClick = { navController.popBackStack() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+                                        Text("Dismiss", color = MaterialTheme.colorScheme.onError)
+                                    }
                                 }
                             }
-                        )
+                        }
                     }
                     else -> {}
                 }

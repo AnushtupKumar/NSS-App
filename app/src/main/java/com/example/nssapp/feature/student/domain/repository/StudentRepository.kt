@@ -21,6 +21,9 @@ interface StudentRepository {
     
     suspend fun checkAttendanceStatus(eventId: String, studentId: String): Result<Boolean> 
 
+    suspend fun getAttendanceStatus(eventId: String, studentId: String): String?
+    fun getAttendanceForEvents(eventIds: List<String>, studentId: String): Flow<Map<String, String>>
+    
     suspend fun getAllWingsList(): List<com.example.nssapp.core.domain.model.Wing>
     
     suspend fun saveFaceEmbedding(studentId: String, embedding: List<Float>): Result<Unit>

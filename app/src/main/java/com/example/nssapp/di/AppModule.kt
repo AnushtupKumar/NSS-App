@@ -16,9 +16,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 import android.app.Application
-import androidx.room.Room
-import com.example.nssapp.core.data.local.NssDatabase
-import com.example.nssapp.core.data.local.dao.EventDao
+
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -44,19 +42,17 @@ object AppModule {
     @Provides
     @Singleton
     fun provideAdminRepository(
-        firestore: FirebaseFirestore,
-        eventDao: EventDao
+        firestore: FirebaseFirestore
     ): AdminRepository {
-        return AdminRepositoryImpl(firestore, eventDao)
+        return AdminRepositoryImpl(firestore)
     }
 
     @Provides
     @Singleton
     fun provideStudentRepository(
-        firestore: FirebaseFirestore,
-        eventDao: EventDao
+        firestore: FirebaseFirestore
     ): StudentRepository {
-        return StudentRepositoryImpl(firestore, eventDao)
+        return StudentRepositoryImpl(firestore)
     }
 
     @Provides
@@ -68,19 +64,5 @@ object AppModule {
         return AttendanceRepositoryImpl(firestore, auth)
     }
 
-    @Provides
-    @Singleton
-    fun provideNssDatabase(app: Application): NssDatabase {
-        return Room.databaseBuilder(
-            app,
-            NssDatabase::class.java,
-            NssDatabase.DATABASE_NAME
-        ).build()
-    }
 
-    @Provides
-    @Singleton
-    fun provideEventDao(db: NssDatabase): EventDao {
-        return db.eventDao
-    }
 }

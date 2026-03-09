@@ -153,13 +153,16 @@ fun EventDetailScreen(
                 )
             }
             if (showAttendees) {
-                Dialog(onDismissRequest = { showAttendees = false }) {
+                Dialog(
+                    onDismissRequest = { showAttendees = false },
+                    properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+                ) {
                     Surface(
                         shape = MaterialTheme.shapes.extraLarge,
                         tonalElevation = 6.dp,
                         modifier = Modifier
                             .fillMaxWidth(0.95f)
-                            .fillMaxHeight(0.8f)
+                            .fillMaxHeight(0.95f)
                     ) {
                         Column(modifier = Modifier.padding(24.dp)) {
                             Row(
@@ -196,7 +199,12 @@ fun EventDetailScreen(
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     items(attendees.size) { index ->
-                                        AttendeeItem(attendees[index])
+                                        AttendeeItem(
+                                            attendee = attendees[index],
+                                            onDelete = { studentId ->
+                                                viewModel.deleteAttendee(eventId, studentId)
+                                            }
+                                        )
                                     }
                                 }
                             }
@@ -472,7 +480,7 @@ fun EventDetailContent(
             Text("View Attendees")
         }
         
-        val canApplyPenalty = event.mandatory && event.negativeHours > 0 && (event.status == EventStatus.ACTIVE.value || event.status == EventStatus.IDLE.value) && (!event.isPenaltyApplied)
+        val canApplyPenalty = event.mandatory && event.negativeHours > 0 && event.status == EventStatus.ACTIVE.value && !event.isPenaltyApplied
         if (canApplyPenalty) {
             Spacer(modifier = Modifier.height(16.dp))
             Button(
@@ -550,7 +558,33 @@ fun BulkAttendanceDialog(
 }
 
 @Composable
-fun AttendeeItem(attendee: Attendee) {
+fun AttendeeItem(attendee: Attendee, onDelete: (String) -> Unit) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Attendance") },
+            text = { Text("Remove attendance record for ${attendee.name}?") },
+            confirmButton = {
+                Button(
+                    onClick = { 
+                        showDeleteConfirm = false
+                        onDelete(attendee.id)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Card(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
@@ -595,6 +629,15 @@ fun AttendeeItem(attendee: Attendee) {
                             else 
                                MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(onClick = { showDeleteConfirm = true }) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete Attendance",
+                    tint = MaterialTheme.colorScheme.error
                 )
             }
         }
@@ -655,21 +698,27 @@ fun QRCodeDialog(data: String, onDismiss: () -> Unit) {
 
 @Composable
 fun StatusChip(status: String) {
-    val color = when(status) {
-        EventStatus.ACTIVE.value -> Color.Green
-        else -> Color.Blue // idle
+    val containerColor = if (status == EventStatus.ACTIVE.value) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.secondaryContainer
+    }
+    
+    val contentColor = if (status == EventStatus.ACTIVE.value) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSecondaryContainer
     }
     
     Surface(
-        color = color.copy(alpha = 0.2f),
-        shape = MaterialTheme.shapes.small,
-        border = androidx.compose.foundation.BorderStroke(1.dp, color)
+        color = containerColor,
+        shape = MaterialTheme.shapes.small
     ) {
         Text(
             text = status,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelMedium,
-            color = Color.Black
+            color = contentColor
         )
     }
 }

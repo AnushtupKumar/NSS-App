@@ -100,30 +100,14 @@ class AttendanceRepositoryImpl @Inject constructor(
                 "studentId" to studentId
             )
 
-            // Data Aggregation: Update student totalHours
-            val studentRef = firestore.collection("students").document(studentId)
-            val positiveHours = eventDoc.getDouble("positiveHours") ?: 0.0
-            
+            // Execute Transaction
             firestore.runTransaction { transaction ->
                 val currentAttendance = transaction.get(attendanceRef)
                 val currentStatus = currentAttendance.getString("status")
                 
                 if (currentStatus != AttendanceStatus.PRESENT.value) {
-                    // Increment hours if they weren't already PRESENT
-                    val studentSnapshot = transaction.get(studentRef)
-                    val currentHours = studentSnapshot.getDouble("totalHours") ?: 0.0
-                    
-                    var hoursToAdd = positiveHours
-                    // If they were penalized, we should restore those hours too? 
-                    // Actually, the user says "mark attendance... status of present". 
-                    // If they were already penalized, maybe we should just override.
-                    if (currentStatus == AttendanceStatus.PENALTY.value) {
-                        hoursToAdd += eventDoc.getDouble("negativeHours") ?: 0.0
-                    }
-                    
-                    transaction.update(studentRef, "totalHours", currentHours + hoursToAdd)
+                    transaction.set(attendanceRef, attendanceData)
                 }
-                transaction.set(attendanceRef, attendanceData)
             }.await()
             
             Result.success(Unit)
@@ -190,14 +174,14 @@ class AttendanceRepositoryImpl @Inject constructor(
                 return Result.failure(Exception("No wings targeted for mandatory attendance"))
             }
 
+            // Optimize: Use 'in' filter or 'whereArrayContainsAny' if supported, but since 'enrolledWings' is an array, 
+            // Firestore supports 'whereArrayContainsAny' for up to 10 elements.
+            val wingsChunked = mandatoryWings.chunked(10)
+            
             val targetStudentIds = mutableSetOf<String>()
-
-            // Optimize: Use 'in' filter if wing count is small, or loop. Firestore 'in' has limit of 10.
-            // For now, loop is fine but let's ensure we fetch student IDs once.
-            for (wingId in mandatoryWings) {
-                // Check enrolledWings list
+            for (wingsBatch in wingsChunked) {
                 val enrolledQuery = firestore.collection("students")
-                    .whereArrayContains("enrolledWings", wingId)
+                    .whereArrayContainsAny("enrolledWings", wingsBatch)
                     .get()
                     .await()
                 targetStudentIds.addAll(enrolledQuery.documents.map { it.id })
@@ -230,10 +214,6 @@ class AttendanceRepositoryImpl @Inject constructor(
                     )
                     batch.set(attendanceRef, attendanceData)
                     
-                    // Update student totalHours (negative)
-                    val studentRef = firestore.collection("students").document(studentId)
-                    batch.update(studentRef, "totalHours", com.google.firebase.firestore.FieldValue.increment(-event.negativeHours))
-                    
                     penaltyCount++
                 }
             }
@@ -250,24 +230,65 @@ class AttendanceRepositoryImpl @Inject constructor(
     }
     
     override suspend fun clearEventPenalties(eventId: String): Result<Unit> {
-            return try {
-                val query = firestore.collection("events").document(eventId)
-                    .collection("attendance")
-                    .whereEqualTo("status", "PENALTY")
-                    .get()
-                    .await()
+        return try {
+            val query = firestore.collection("events").document(eventId)
+                .collection("attendance")
+                .whereEqualTo("status", "PENALTY")
+                .get()
+                .await()
 
-                if (query.isEmpty) return Result.success(Unit)
+            if (query.isEmpty) return Result.success(Unit)
 
+            val batch = firestore.batch()
+            for (doc in query.documents) {
+                batch.delete(doc.reference)
+            }
+            batch.commit().await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun deleteAllEventAttendance(eventId: String): Result<Unit> {
+        return try {
+            val attendanceQuery = firestore.collection("events").document(eventId)
+                .collection("attendance")
+                .get()
+                .await()
+
+            if (attendanceQuery.isEmpty) return Result.success(Unit)
+
+            // Batch delete (max 500 ops per batch)
+            val chunks = attendanceQuery.documents.chunked(500)
+            for (chunk in chunks) {
                 val batch = firestore.batch()
-                for (doc in query.documents) {
+                for (doc in chunk) {
                     batch.delete(doc.reference)
                 }
                 batch.commit().await()
-                Result.success(Unit)
-            } catch (e: Exception) {
-                Result.failure(e)
             }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
+
+    override suspend fun deleteStudentAttendance(
+        eventId: String,
+        studentId: String
+    ): Result<Unit> {
+        return try {
+            firestore.collection("events").document(eventId)
+                .collection("attendance").document(studentId)
+                .delete()
+                .await()
+            
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+}
 

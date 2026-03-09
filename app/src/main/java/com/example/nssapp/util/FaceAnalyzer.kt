@@ -45,9 +45,12 @@ class FaceAnalyzer(
                     if (faces.isNotEmpty()) {
                         val face = faces.first()
                         
-                        // Basic Liveness Check (Must be smiling to prevent some photo spoofs)
+                        // Basic Liveness & Quality Check (Must be smiling and have eyes open)
                         val smilingProbability = face.smilingProbability ?: 0f
-                        if (smilingProbability > 0.4f) {
+                        val leftEyeOpen = face.leftEyeOpenProbability ?: 1f
+                        val rightEyeOpen = face.rightEyeOpenProbability ?: 1f
+                        
+                        if (smilingProbability > 0.4f && leftEyeOpen > 0.5f && rightEyeOpen > 0.5f) {
                             val bitmap = imageProxy.toBitmap()
                             if (bitmap != null) {
                                 val croppedFace = cropFace(bitmap, face.boundingBox)
@@ -61,7 +64,7 @@ class FaceAnalyzer(
                                 }
                             }
                         } else {
-                            Log.d("FaceAnalyzer", "Face detected, but user is not smiling (liveness check).")
+                            Log.d("FaceAnalyzer", "Face detected, but user is not smiling or eyes are closed.")
                         }
                     }
                 }
@@ -77,15 +80,23 @@ class FaceAnalyzer(
     }
 
     private fun cropFace(bitmap: Bitmap, boundingBox: Rect): Bitmap {
+        // Add 20% padding to provide more context for the face recognizer
+        val paddingX = (boundingBox.width() * 0.2f).toInt()
+        val paddingY = (boundingBox.height() * 0.2f).toInt()
+
         // Ensure bounds are inside the image
-        val x = boundingBox.left.coerceAtLeast(0)
-        val y = boundingBox.top.coerceAtLeast(0)
+        val left = (boundingBox.left - paddingX).coerceAtLeast(0)
+        val top = (boundingBox.top - paddingY).coerceAtLeast(0)
+        
         // Ensure width and height don't exceed the bitmap bounds
-        val width = boundingBox.width().coerceAtMost(bitmap.width - x)
-        val height = boundingBox.height().coerceAtMost(bitmap.height - y)
+        val right = (boundingBox.right + paddingX).coerceAtMost(bitmap.width)
+        val bottom = (boundingBox.bottom + paddingY).coerceAtMost(bitmap.height)
+
+        val width = right - left
+        val height = bottom - top
 
         if (width <= 0 || height <= 0) return bitmap
 
-        return Bitmap.createBitmap(bitmap, x, y, width, height)
+        return Bitmap.createBitmap(bitmap, left, top, width, height)
     }
 }

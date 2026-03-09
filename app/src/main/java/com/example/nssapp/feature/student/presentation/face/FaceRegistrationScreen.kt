@@ -23,6 +23,9 @@ import com.example.nssapp.util.FaceAnalyzer
 import com.example.nssapp.util.FaceRecognizer
 import java.util.concurrent.Executors
 import kotlinx.coroutines.launch
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.graphics.Color
 
 @Composable
 fun FaceRegistrationScreen(
@@ -38,6 +41,9 @@ fun FaceRegistrationScreen(
     var hasCameraPermission by remember { mutableStateOf(false) }
     var isRegistering by remember { mutableStateOf(false) }
     var registrationMessage by remember { mutableStateOf("Please smile at the camera to register your face.") }
+    
+    val haptic = LocalHapticFeedback.current
+    var collectedEmbeddings by remember { mutableStateOf(listOf<FloatArray>()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -74,16 +80,30 @@ fun FaceRegistrationScreen(
                                     FaceAnalyzer(
                                         faceRecognizer = faceRecognizer,
                                         onFaceDetected = { _, embedding ->
-                                            if (embedding != null && !isRegistering) {
-                                                isRegistering = true
-                                                registrationMessage = "Face detected! Saving to profile..."
-                                                onSaveEmbedding(embedding.toList())
-                                                
-                                                // Assuming success for UX, ideally observe a state flow
-                                                coroutineScope.launch {
-                                                    kotlinx.coroutines.delay(1000)
-                                                    registrationMessage = "Registration Successful!"
-                                                    onRegistrationSuccess()
+                                            coroutineScope.launch {
+                                                if (embedding != null && !isRegistering) {
+                                                    if (collectedEmbeddings.size < 3) {
+                                                        collectedEmbeddings = collectedEmbeddings + embedding
+                                                        registrationMessage = "Keep smiling! Capturing frame ${collectedEmbeddings.size}/3..."
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    }
+                                                    
+                                                    if (collectedEmbeddings.size >= 3 && !isRegistering) {
+                                                        isRegistering = true
+                                                        registrationMessage = "Face detected! Saving to profile..."
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        
+                                                        val size = collectedEmbeddings[0].size
+                                                        val averaged = FloatArray(size) { i ->
+                                                            collectedEmbeddings.map { it[i] }.average().toFloat()
+                                                        }
+                                                        
+                                                        onSaveEmbedding(averaged.toList())
+                                                        
+                                                        kotlinx.coroutines.delay(1000)
+                                                        registrationMessage = "Registration Successful!"
+                                                        onRegistrationSuccess()
+                                                    }
                                                 }
                                             }
                                         }
@@ -110,6 +130,21 @@ fun FaceRegistrationScreen(
                 },
                 modifier = Modifier.fillMaxSize()
             )
+
+            // Face Circle Guide Overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 80.dp),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                 Surface(
+                    color = Color.Transparent,
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    border = androidx.compose.foundation.BorderStroke(3.dp, MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.size(280.dp)
+                ) {}
+            }
 
             // UI Overlay
             Column(
