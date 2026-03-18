@@ -93,6 +93,12 @@ fun ScanScreen(
                 
                 val isVerifyingFace = uiState is ScanUiState.RequiresFaceScan
                 val isCameraActive = uiState is ScanUiState.Idle || uiState is ScanUiState.RequiresFaceScan
+                var scanMessage by remember { mutableStateOf("") }
+                
+                LaunchedEffect(isVerifyingFace) {
+                    scanMessage = if (isVerifyingFace) "Smile at the camera to verify your identity" else "Align QR code within the frame"
+                }
+
                 val targetEmbedding = (uiState as? ScanUiState.RequiresFaceScan)?.targetEmbedding
                 val faceRecognizer = remember { com.example.nssapp.util.FaceRecognizer(context) }
 
@@ -130,6 +136,9 @@ fun ScanScreen(
                                     onFaceDetected = { _, _ -> },
                                     onVerificationResult = { isMatch ->
                                         viewModel.onFaceVerificationResult(isMatch)
+                                    },
+                                    onError = { errorMsg ->
+                                        scanMessage = errorMsg
                                     }
                                 )
                             )
@@ -205,7 +214,7 @@ fun ScanScreen(
                                 color = Color.Transparent,
                                 shape = androidx.compose.foundation.shape.CircleShape,
                                 border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary),
-                                modifier = Modifier.size(280.dp)
+                                modifier = Modifier.size(340.dp)
                             ) {}
                         }
                     }
@@ -218,7 +227,7 @@ fun ScanScreen(
                             shadowElevation = 8.dp
                         ) {
                             Text(
-                                text = if (isVerifyingFace) "Smile at the camera to verify your identity" else "Align QR code within the frame",
+                                text = scanMessage,
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
                             )
@@ -299,8 +308,8 @@ fun ScanScreen(
                                         color = MaterialTheme.colorScheme.onErrorContainer
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
-                                    Button(onClick = { navController.popBackStack() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
-                                        Text("Dismiss", color = MaterialTheme.colorScheme.onError)
+                                    Button(onClick = { viewModel.resetState() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+                                        Text("Try Again", color = MaterialTheme.colorScheme.onError)
                                     }
                                 }
                             }

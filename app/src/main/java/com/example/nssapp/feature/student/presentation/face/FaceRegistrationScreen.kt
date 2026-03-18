@@ -81,14 +81,16 @@ fun FaceRegistrationScreen(
                                         faceRecognizer = faceRecognizer,
                                         onFaceDetected = { _, embedding ->
                                             coroutineScope.launch {
-                                                if (embedding != null && !isRegistering) {
-                                                    if (collectedEmbeddings.size < 3) {
+                                                if (embedding == null && !isRegistering) {
+                                                    registrationMessage = "Face detected, but AI failed to decode embedding. Hold still."
+                                                } else if (embedding != null && !isRegistering) {
+                                                    if (collectedEmbeddings.size < 10) {
                                                         collectedEmbeddings = collectedEmbeddings + embedding
-                                                        registrationMessage = "Keep smiling! Capturing frame ${collectedEmbeddings.size}/3..."
+                                                        registrationMessage = "Keep smiling! Capturing frame ${collectedEmbeddings.size}/10..."
                                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                     }
                                                     
-                                                    if (collectedEmbeddings.size >= 3 && !isRegistering) {
+                                                    if (collectedEmbeddings.size >= 10 && !isRegistering) {
                                                         isRegistering = true
                                                         registrationMessage = "Face detected! Saving to profile..."
                                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -98,7 +100,8 @@ fun FaceRegistrationScreen(
                                                             collectedEmbeddings.map { it[i] }.average().toFloat()
                                                         }
                                                         
-                                                        onSaveEmbedding(averaged.toList())
+                                                        val normalizedAveraged = faceRecognizer.normalizeEmbedding(averaged)
+                                                        onSaveEmbedding(normalizedAveraged.toList())
                                                         
                                                         kotlinx.coroutines.delay(1000)
                                                         registrationMessage = "Registration Successful!"
@@ -106,6 +109,9 @@ fun FaceRegistrationScreen(
                                                     }
                                                 }
                                             }
+                                        },
+                                        onError = { errorMsg ->
+                                            registrationMessage = errorMsg
                                         }
                                     )
                                 )
@@ -142,7 +148,7 @@ fun FaceRegistrationScreen(
                     color = Color.Transparent,
                     shape = androidx.compose.foundation.shape.CircleShape,
                     border = androidx.compose.foundation.BorderStroke(3.dp, MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.size(280.dp)
+                    modifier = Modifier.size(340.dp)
                 ) {}
             }
 
